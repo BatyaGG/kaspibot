@@ -1,0 +1,3 @@
+current_status_table - order_link, curr_price, next_price
+event_table - time, seller_links[], seller_prices[]
+order_table - order_link, min_price, skip, iter_no
