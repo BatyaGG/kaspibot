@@ -258,7 +258,7 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
                        "WHERE order_link = %s", (int(iter_no) + 1, True, link))
         db.commit()
         cursor.close()
-        exit_handler()
+        return
 
     for k in prices.keys():
         price = int(re.sub('[^0-9]', '', prices[k]))
