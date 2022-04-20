@@ -437,8 +437,8 @@ if __name__ == '__main__':
     else:
         today = datetime.datetime.now()
         wait_seconds = datetime.datetime(today.year, today.month, today.day, 7, 30).timestamp() - today.timestamp()
-        time.sleep(wait_seconds)
         print('Waiting morning')
+        time.sleep(wait_seconds)
 
 
 # if __name__ == '__main__':
