@@ -3,6 +3,7 @@ import re
 import time
 import atexit
 import warnings
+import datetime
 import sys
 from threading import Thread
 warnings.filterwarnings("ignore")
@@ -356,7 +357,7 @@ def start_time_counter(timeout, start_time):
                 exit_handler()
             exit_handler()
         time.sleep(3)
-th = Thread(target=start_time_counter, args=(60, start_time))
+th = Thread(target=start_time_counter, args=(60, start_time), daemon=True)
 th.start()
 
 
@@ -365,65 +366,79 @@ def exit_handler():
     driver.close()
     db.close()
     os.kill(os.getpid(), 9)
-atexit.register(exit_handler)
+
+
+def time_in_range(start, end, x):
+    if start <= end:
+        return start <= x <= end
+    else:
+        return start <= x or x <= end
 
 
 if __name__ == '__main__':
-    my_link = 'https://kaspi.kz/shop/info/merchant/11056023/address-tab/'
+    if time_in_range(datetime.time(7, 30), datetime.time(2, 0), datetime.datetime.now().time()):
+        atexit.register(exit_handler)
 
-    db = pg.connect(user='batyagg',
-                    password='asdasd',
-                    database='postgres',
-                    host='localhost',
-                    port=5432)
-    driver = None
-    create_driver()
-    # process_prices('https://kaspi.kz/shop/p/kompressor-masljanyi-mateus-ms03307-100935415/', {'https://kaspi.kz/shop/info/merchant/61012/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/tiyn/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/3122014/address-tab/': '392 695 ₸', 'https://kaspi.kz/shop/info/merchant/6416001/address-tab/': '392 697 ₸', 'https://kaspi.kz/shop/info/merchant/516011/address-tab/': '392 700 ₸', 'https://kaspi.kz/shop/info/merchant/5346003/address-tab/': '392 770 ₸', 'https://kaspi.kz/shop/info/merchant/11121004/address-tab/': '393 000 ₸', 'https://kaspi.kz/shop/info/merchant/10923000/address-tab/': '393 333 ₸', 'https://kaspi.kz/shop/info/merchant/polat/address-tab/': '401 539 ₸', 'https://kaspi.kz/shop/info/merchant/2731002/address-tab/': '418 691 ₸', 'https://kaspi.kz/shop/info/merchant/5336002/address-tab/': '444 599 ₸', 'https://kaspi.kz/shop/info/merchant/shelby/address-tab/': '444 611 ₸', 'https://kaspi.kz/shop/info/merchant/altynorda/address-tab/': '445 470 ₸', 'https://kaspi.kz/shop/info/merchant/8265001/address-tab/': '475 000 ₸'})
+        my_link = 'https://kaspi.kz/shop/info/merchant/11056023/address-tab/'
 
-    login()
+        db = pg.connect(user='batyagg',
+                        password='asdasd',
+                        database='postgres',
+                        host='localhost',
+                        port=5432)
+        driver = None
+        create_driver()
+        # process_prices('https://kaspi.kz/shop/p/kompressor-masljanyi-mateus-ms03307-100935415/', {'https://kaspi.kz/shop/info/merchant/61012/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/tiyn/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/3122014/address-tab/': '392 695 ₸', 'https://kaspi.kz/shop/info/merchant/6416001/address-tab/': '392 697 ₸', 'https://kaspi.kz/shop/info/merchant/516011/address-tab/': '392 700 ₸', 'https://kaspi.kz/shop/info/merchant/5346003/address-tab/': '392 770 ₸', 'https://kaspi.kz/shop/info/merchant/11121004/address-tab/': '393 000 ₸', 'https://kaspi.kz/shop/info/merchant/10923000/address-tab/': '393 333 ₸', 'https://kaspi.kz/shop/info/merchant/polat/address-tab/': '401 539 ₸', 'https://kaspi.kz/shop/info/merchant/2731002/address-tab/': '418 691 ₸', 'https://kaspi.kz/shop/info/merchant/5336002/address-tab/': '444 599 ₸', 'https://kaspi.kz/shop/info/merchant/shelby/address-tab/': '444 611 ₸', 'https://kaspi.kz/shop/info/merchant/altynorda/address-tab/': '445 470 ₸', 'https://kaspi.kz/shop/info/merchant/8265001/address-tab/': '475 000 ₸'})
 
-    # index_rows()
-    orders = psql.read_sql('SELECT * from order_table', db)
-    print('Orders quant total', len(orders))
+        login()
 
-    min_iter_no = min(orders.iter_no)
-    max_iter_no = max(orders.iter_no)
-    if max_iter_no - min_iter_no > 1:
-        raise Exception('Divergence in iter_no')
-    if min_iter_no == max_iter_no:
-        print('Starting new cycle')
+        # index_rows()
+        orders = psql.read_sql('SELECT * from order_table', db)
+        print('Orders quant total', len(orders))
+
+        min_iter_no = min(orders.iter_no)
+        max_iter_no = max(orders.iter_no)
+        if max_iter_no - min_iter_no > 1:
+            raise Exception('Divergence in iter_no')
+        if min_iter_no == max_iter_no:
+            print('Starting new cycle')
+        else:
+            orders = orders[orders.iter_no==min_iter_no]
+            print(f'Continuing prev cycle: new size = {len(orders)}')
+
+        for i in range(len(orders)):
+            start_time[0] = time.time()
+
+            order = orders.iloc[i]
+            link = order.order_link
+            min_price = order.min_price
+            to_skip = order.skip
+            iter_no = order.iter_no
+            success = False
+
+            print()
+            print(f'{i + 1}/{len(orders)}')
+            print(link)
+            while not success:
+                try:
+                    # driver.get(link)
+                    #
+                    prices = get_price_rows(link)
+                    process_order(link, prices, min_price, to_skip, iter_no)
+                    # print(prices)
+                    success = True
+                except:
+                    success = False
+                    driver.back()
+                    time.sleep(5)
+
+        driver.close()
+        db.close()
     else:
-        orders = orders[orders.iter_no==min_iter_no]
-        print(f'Continuing prev cycle: new size = {len(orders)}')
-
-    for i in range(len(orders)):
-        start_time[0] = time.time()
-
-        order = orders.iloc[i]
-        link = order.order_link
-        min_price = order.min_price
-        to_skip = order.skip
-        iter_no = order.iter_no
-        success = False
-
-        print()
-        print(f'{i + 1}/{len(orders)}')
-        print(link)
-        while not success:
-            try:
-                # driver.get(link)
-                #
-                prices = get_price_rows(link)
-                process_order(link, prices, min_price, to_skip, iter_no)
-                # print(prices)
-                success = True
-            except:
-                success = False
-                driver.back()
-                time.sleep(5)
-
-    driver.close()
-    db.close()
+        today = datetime.datetime.now()
+        wait_seconds = datetime.datetime(today.year, today.month, today.day, 7, 30).timestamp() - today.timestamp()
+        time.sleep(wait_seconds)
+        print('Waiting morning')
 
 
 # if __name__ == '__main__':
