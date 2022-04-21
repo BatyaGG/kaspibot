@@ -16,9 +16,7 @@ db = pg.connect(user=config.db_user,
 
 pd.set_option('max_columns', 10)
 
-skip_orders = ['https://kaspi.kz/shop/p/almacom-ach-09af-belyi-mednaja-installjatsija-4200779',
-               'https://kaspi.kz/shop/p/almacom-ach-12af-belyi-montazhnyi-komplekt-4200714',
-               'https://kaspi.kz/shop/p/almacom-ach-12as-belyi-mednaja-installjatsija-4201138']
+skip_orders = []
 
 df = pd.read_csv('order_minprice.csv', delimiter=';', index_col=0)
 df = df[['Ссылка на товар', 'Минимум цена']]
