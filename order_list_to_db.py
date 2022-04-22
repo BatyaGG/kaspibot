@@ -18,8 +18,9 @@ pd.set_option('max_columns', 10)
 
 skip_orders = []
 
-df = pd.read_csv('order_minprice.csv', delimiter=';', index_col=0)
-df = df[['Ссылка на товар', 'Минимум цена']]
+df = pd.read_csv('new_cc.csv', delimiter=';', index_col=0)
+price_col_name = 'Минимум цена2'
+df = df[['Ссылка на товар', price_col_name]]
 
 df['Ссылка на товар'] = df['Ссылка на товар'].apply(correct_link)
 print('len of df before', len(df))
@@ -30,7 +31,7 @@ cursor.execute("TRUNCATE order_table")
 for i in range(len(df)):
     row = df.iloc[i]
     cursor.execute("INSERT INTO order_table (order_link, min_price, skip, iter_no) "
-                   "VALUES(%s, %s, %s, %s)", (row['Ссылка на товар'], math.ceil(float(row['Минимум цена'])),
+                   "VALUES(%s, %s, %s, %s)", (row['Ссылка на товар'], math.ceil(float(row[price_col_name])),
                                               True if row['Ссылка на товар'] in skip_orders else False, 0))
     db.commit()
 
