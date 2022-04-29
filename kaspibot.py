@@ -285,23 +285,45 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
 
     if not to_skip:
         iam_top1 = sellers_links[0] == my_link
-
-        desired_price = min(sellers_prices) - 1
-        desired_price = max(min_price, desired_price)
+        if iam_top1:
+            desired_price = min(sellers_prices[1:]) - 1
+            desired_price = max(min_price, desired_price)
+        else:
+            desired_price = min(sellers_prices) - 1
+            desired_price = max(min_price, desired_price)
 
         price_status = psql.read_sql(f"SELECT * FROM current_price_status where order_link=\'{order_link}\'", db)
         curr_price = price_status.curr_price.iloc[0]
         next_price = price_status.next_price.iloc[0]
 
         if not next_price or next_price == curr_price:
-            if not iam_top1 and desired_price != curr_price:
+            if iam_top1:
+                print(thread_name, f'Already TOP1 for {link}')
+            if desired_price != curr_price:
+                if iam_top1:
+                    print(thread_name, f'Updating price to fit 2nd seller')
                 print(thread_name, f'Updating price to {desired_price} for {link}')
                 update_price(order_link, desired_price)
                 cursor.execute("UPDATE current_price_status "
                                "SET next_price = %s "
                                "WHERE order_link = %s", (int(desired_price), link))
-            else:
-                print(thread_name, f'Already top1 or price == min_price for {link}')
+
+
+            # if not iam_top1 and desired_price != curr_price:
+            #     print(thread_name, f'Updating price to {desired_price} for {link}')
+            #     update_price(order_link, desired_price)
+            #     cursor.execute("UPDATE current_price_status "
+            #                    "SET next_price = %s "
+            #                    "WHERE order_link = %s", (int(desired_price), link))
+            # else:
+            #     if iam_top1:
+            #         print(thread_name, f'Iam TOP1 and updating price to {desired_price} for {link}')
+            #         update_price(order_link, desired_price)
+            #         cursor.execute("UPDATE current_price_status "
+            #                        "SET next_price = %s "
+            #                        "WHERE order_link = %s", (int(desired_price), link))
+            #     else:
+            #         print(thread_name, f'price == min_price for {link}')
         else:
             print(thread_name, 'Previous price update is pending')
     else:
@@ -363,14 +385,16 @@ def start_time_counter(timeout, start_time):
                 exit_handler()
             exit_handler()
         time.sleep(3)
-th = Thread(target=start_time_counter, args=(60, start_time), daemon=True)
+th = Thread(target=start_time_counter, args=(30, start_time), daemon=True)
 th.start()
 
 
 def exit_handler():
     global driver, db
+    print(thread_name, 'Got kill signal')
     driver.close()
     db.close()
+    print(thread_name, 'Closed driver and db')
     os.kill(os.getpid(), 9)
 
 
@@ -435,13 +459,14 @@ if __name__ == '__main__':
         print(thread_name, 'Orders quant total', len(orders))
         min_iter_no = min(orders.iter_no)
         max_iter_no = max(orders.iter_no)
-        if max_iter_no - min_iter_no > 1:
-            raise Exception('Divergence in iter_no')
+        #TODO: Divergence why?
+        # if max_iter_no - min_iter_no > 1:
+        #     raise Exception('Divergence in iter_no')
         if min_iter_no == max_iter_no:
             print(thread_name, 'Starting new cycle')
         else:
             orders = orders[orders.iter_no==min_iter_no]
-            print(thread_name, f'Continuing prev cycle: new size = {len(orders)}')
+            print(thread_name, f'Continuing prev cycle: smallest iterated orders size = {len(orders)}')
 
         for i in range(len(orders)):
             start_time[0] = time.time()
