@@ -490,11 +490,10 @@ if __name__ == '__main__':
             login()
 
             # index_rows()
-            orders = psql.read_sql(f'SELECT * from _{customer_id}_order_table', db).iloc[start_idx:end_idx]
+            orders = psql.read_sql(f'SELECT * from _{customer_id}_order_table order by order_link', db).iloc[start_idx:end_idx]
             write_logs_out(thread_id, f'Orders quant total {len(orders)}')
             min_iter_no = min(orders.iter_no)
             max_iter_no = max(orders.iter_no)
-            # TODO: Divergence why?
             # TODO: elapsed more than no exit()
             if max_iter_no - min_iter_no > 1:
                 write_logs_out(thread_id, 'Divergence in iter_no')
