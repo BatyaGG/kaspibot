@@ -470,6 +470,12 @@ if __name__ == '__main__':
     start_idx = args.start_idx
     end_idx = args.end_idx
 
+    db = pg.connect(user=config.db_user,
+                    password=config.db_pass,
+                    database=config.db,
+                    host=config.host,
+                    port=config.port)
+
     try:
         my_id = my_link.split('/')[-3]
 
@@ -478,11 +484,11 @@ if __name__ == '__main__':
 
             # my_link = 'https://kaspi.kz/shop/info/merchant/11056023/address-tab/'
 
-            db = pg.connect(user=config.db_user,
-                            password=config.db_pass,
-                            database=config.db,
-                            host=config.host,
-                            port=config.port)
+            # db = pg.connect(user=config.db_user,
+            #                 password=config.db_pass,
+            #                 database=config.db,
+            #                 host=config.host,
+            #                 port=config.port)
             driver = None
             create_driver()
             # process_prices('https://kaspi.kz/shop/p/kompressor-masljanyi-mateus-ms03307-100935415/', {'https://kaspi.kz/shop/info/merchant/61012/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/tiyn/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/3122014/address-tab/': '392 695 ₸', 'https://kaspi.kz/shop/info/merchant/6416001/address-tab/': '392 697 ₸', 'https://kaspi.kz/shop/info/merchant/516011/address-tab/': '392 700 ₸', 'https://kaspi.kz/shop/info/merchant/5346003/address-tab/': '392 770 ₸', 'https://kaspi.kz/shop/info/merchant/11121004/address-tab/': '393 000 ₸', 'https://kaspi.kz/shop/info/merchant/10923000/address-tab/': '393 333 ₸', 'https://kaspi.kz/shop/info/merchant/polat/address-tab/': '401 539 ₸', 'https://kaspi.kz/shop/info/merchant/2731002/address-tab/': '418 691 ₸', 'https://kaspi.kz/shop/info/merchant/5336002/address-tab/': '444 599 ₸', 'https://kaspi.kz/shop/info/merchant/shelby/address-tab/': '444 611 ₸', 'https://kaspi.kz/shop/info/merchant/altynorda/address-tab/': '445 470 ₸', 'https://kaspi.kz/shop/info/merchant/8265001/address-tab/': '475 000 ₸'})
