@@ -1,19 +1,19 @@
-list_descendants ()
-{
-  local children=$(ps -o pid= --ppid "$1")
-
-  for pid in $children
-  do
-    list_descendants "$pid"
-  done
-
-  echo "$children"
-}
+#list_descendants ()
+#{
+#  local children=$(ps -o pid= --ppid "$1")
+#
+#  for pid in $children
+#  do
+#    list_descendants "$pid"
+#  done
+#
+#  echo "$children"
+#}
 
 cleanup() {
 #  kill $(jobs -p)
-#  pkill -P $$
-  kill $(list_descendants $$)
+  pkill -P $$
+#  kill $(list_descendants $$)
 }
 
 trap cleanup EXIT
