@@ -2,9 +2,11 @@ import os
 import re
 import time
 import atexit
+import traceback
 import warnings
 import datetime
 import sys
+import os
 import argparse
 import config
 from threading import Thread
@@ -22,6 +24,9 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 # from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.firefox.options import Options
+
+sys.path.append('Customer_data')
+from Customer_data.Customers import customers
 
 elem = []
 
@@ -95,7 +100,7 @@ def wait_till_load_by_text(text):
             driver.forward()
             # driver.refresh()
     exit_handler()
-    print(thread_name, 'exit_handler called')
+    write_logs_out(thread_id, f'Exit handler called by wait_till_load_by_text: {text}')
     exit()
     return False
 
@@ -258,11 +263,11 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
     if my_link in prices:
         my_price = int(re.sub('[^0-9]', '', prices[my_link]))
     else:
-        print(thread_name, 'I AM NOT A SELLER')
+        write_logs_out(thread_id, f'Im NOT SELLER for {order_link}')
         cursor = db.cursor()
-        cursor.execute("UPDATE order_table "
-                       "SET iter_no = %s, skip = %s "
-                       "WHERE order_link = %s", (int(iter_no) + 1, True, link))
+        cursor.execute(f"UPDATE _{customer_id}_order_table "
+                       "SET iter_no = %s, skip = %s, skip_reason = %s "
+                       "WHERE order_link = %s", (int(iter_no) + 1, True, 'iam_not_seller', link))
         db.commit()
         cursor.close()
         return
@@ -271,43 +276,41 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
         price = int(re.sub('[^0-9]', '', prices[k]))
         sellers_links.append(k)
         sellers_prices.append(price)
-
     cursor = db.cursor()
-    cursor.execute("INSERT INTO scan_event (order_link, sellers_links, sellers_prices) "
+    cursor.execute(f"INSERT INTO _{customer_id}_scan_event (order_link, sellers_links, sellers_prices) "
                    "VALUES(%s, %s, %s)", (order_link, sellers_links, sellers_prices))
 
-    cursor.execute("INSERT INTO current_price_status (order_link, curr_price) "
+    cursor.execute(f"INSERT INTO _{customer_id}_current_price_status (order_link, curr_price) "
                    "VALUES (%s, %s) "
                    "ON CONFLICT (order_link) DO UPDATE "
                    "SET curr_price = %s", (order_link,
                                            my_price,
                                            my_price))
-
-    if not to_skip:
+    if not to_skip and len(sellers_links) > 1:
         iam_top1 = sellers_links[0] == my_link
+
         if iam_top1:
-            desired_price = min(sellers_prices[1:]) - 1
+            desired_price = min(sellers_prices[1:]) - 2
             desired_price = max(min_price, desired_price)
         else:
-            desired_price = min(sellers_prices) - 1
+            desired_price = min(sellers_prices) - 2
             desired_price = max(min_price, desired_price)
-
-        price_status = psql.read_sql(f"SELECT * FROM current_price_status where order_link=\'{order_link}\'", db)
+        price_status = psql.read_sql(f"SELECT * FROM _{customer_id}_current_price_status where order_link=\'{order_link}\'", db)
         curr_price = price_status.curr_price.iloc[0]
         next_price = price_status.next_price.iloc[0]
-
         if not next_price or next_price == curr_price:
             if iam_top1:
-                print(thread_name, f'Already TOP1 for {link}')
+                write_logs_out(thread_id, f'Already TOP1 for {link}')
+            if desired_price == min_price:
+                write_logs_out(thread_id, f'Already min price {min_price} for {link}')
             if desired_price != curr_price:
                 if iam_top1:
-                    print(thread_name, f'Updating price to fit 2nd seller')
-                print(thread_name, f'Updating price to {desired_price} for {link}')
+                    write_logs_out(thread_id, f'Updating price to fit 2nd seller')
+                write_logs_out(thread_id, f'Updating price to {desired_price} for {link}')
                 update_price(order_link, desired_price)
-                cursor.execute("UPDATE current_price_status "
+                cursor.execute(f"UPDATE _{customer_id}_current_price_status "
                                "SET next_price = %s "
                                "WHERE order_link = %s", (int(desired_price), link))
-
 
             # if not iam_top1 and desired_price != curr_price:
             #     print(thread_name, f'Updating price to {desired_price} for {link}')
@@ -325,10 +328,12 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
             #     else:
             #         print(thread_name, f'price == min_price for {link}')
         else:
-            print(thread_name, 'Previous price update is pending')
+            write_logs_out(thread_id, f'Previous price update is pending for {link} from {curr_price} to {next_price}')
     else:
-        print(thread_name, f'Skipping {link}')
-    cursor.execute("UPDATE order_table "
+        write_logs_out(thread_id, f'Skipping {link}')
+        if len(sellers_links) == 1:
+            write_logs_out(thread_id, f'Im only 1 seller for {link}')
+    cursor.execute(f"UPDATE _{customer_id}_order_table "
                    "SET iter_no = %s "
                    "WHERE order_link = %s", (int(iter_no) + 1, link))
     db.commit()
@@ -373,16 +378,15 @@ def start_time_counter(timeout, start_time):
     global driver
     while True:
         if time.time() - start_time[0] > timeout:
-            print(thread_name, f'Elapsed more than {timeout} sec -> exit()')
+            write_logs_out(thread_id, f'Elapsed more than {timeout} sec -> exit()')
             if wait_till_load_by_text('К сожалению, в настоящее время'):
-                print(thread_name, 'NO ANY SELLER')
+                write_logs_out(thread_id, 'NO ANY SELLER')
                 cursor = db.cursor()
-                cursor.execute("UPDATE order_table "
-                               "SET iter_no = %s, skip = %s "
-                               "WHERE order_link = %s", (int(iter_no) + 1, True, link))
+                cursor.execute(f"UPDATE _{customer_id}_order_table "
+                               "SET iter_no = %s, skip = %s, skip_reason = %s "
+                               "WHERE order_link = %s", (int(iter_no) + 1, True, 'no_any_seller', link))
                 db.commit()
                 cursor.close()
-                exit_handler()
             exit_handler()
         time.sleep(3)
 th = Thread(target=start_time_counter, args=(30, start_time), daemon=True)
@@ -391,10 +395,10 @@ th.start()
 
 def exit_handler():
     global driver, db
-    print(thread_name, 'Got kill signal')
+    write_logs_out(thread_id, 'Got kill signal')
     driver.close()
     db.close()
-    print(thread_name, 'Closed driver and db')
+    write_logs_out(thread_id, 'Closed driver and db')
     os.kill(os.getpid(), 9)
 
 
@@ -405,9 +409,38 @@ def time_in_range(start, end, x):
         return start <= x or x <= end
 
 
+def write_logs_out(thread_n, text):
+    print(thread_n, text)
+    cursor = db.cursor()
+    cursor.execute(f"INSERT INTO _{customer_id}_logs (thread, log) "
+                   "VALUES (%s, %s) ", (int(thread_n), text))
+    db.commit()
+    cursor.close()
+
+
+def truncate_tables():
+    global db
+    try:
+        db.close()
+    except:
+        pass
+    db = pg.connect(user=config.db_user,
+                    password=config.db_pass,
+                    database=config.db,
+                    host=config.host,
+                    port=config.port)
+    cursor = db.cursor()
+    cursor.execute(f"truncate _{customer_id}_current_price_status")
+    db.commit()
+    cursor.close()
+    customer = customers[int(customer_id)]
+    os.system(f"python3 order_list_to_db.py {customer_id} Customer_data/{customer['filename']} link price")
+    time.sleep(5)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('db', type=str)
+    parser.add_argument('customer_id', type=str)
     parser.add_argument('my_link', type=str)
     parser.add_argument('nickname', type=str)
     parser.add_argument('password', type=str)
@@ -423,6 +456,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    customer_id = args.customer_id
     my_link = args.my_link
     nickname = args.nickname
     password = args.password
@@ -432,75 +466,82 @@ if __name__ == '__main__':
     end_hour = args.end_hour
     end_min = args.end_min
 
-    thread_name = args.thread_name
+    thread_id = args.thread_name
     start_idx = args.start_idx
     end_idx = args.end_idx
 
-    my_id = my_link.split('/')[-3]
+    try:
+        my_id = my_link.split('/')[-3]
 
-    if time_in_range(datetime.time(start_hour, start_min), datetime.time(end_hour, end_min), datetime.datetime.now().time()):
-        atexit.register(exit_handler)
+        if time_in_range(datetime.time(start_hour, start_min), datetime.time(end_hour, end_min), datetime.datetime.now().time()):
+            atexit.register(exit_handler)
 
-        # my_link = 'https://kaspi.kz/shop/info/merchant/11056023/address-tab/'
+            # my_link = 'https://kaspi.kz/shop/info/merchant/11056023/address-tab/'
 
-        db = pg.connect(user=config.db_user,
-                        password=config.db_pass,
-                        database=args.db,
-                        host=config.host,
-                        port=config.port)
-        driver = None
-        create_driver()
-        # process_prices('https://kaspi.kz/shop/p/kompressor-masljanyi-mateus-ms03307-100935415/', {'https://kaspi.kz/shop/info/merchant/61012/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/tiyn/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/3122014/address-tab/': '392 695 ₸', 'https://kaspi.kz/shop/info/merchant/6416001/address-tab/': '392 697 ₸', 'https://kaspi.kz/shop/info/merchant/516011/address-tab/': '392 700 ₸', 'https://kaspi.kz/shop/info/merchant/5346003/address-tab/': '392 770 ₸', 'https://kaspi.kz/shop/info/merchant/11121004/address-tab/': '393 000 ₸', 'https://kaspi.kz/shop/info/merchant/10923000/address-tab/': '393 333 ₸', 'https://kaspi.kz/shop/info/merchant/polat/address-tab/': '401 539 ₸', 'https://kaspi.kz/shop/info/merchant/2731002/address-tab/': '418 691 ₸', 'https://kaspi.kz/shop/info/merchant/5336002/address-tab/': '444 599 ₸', 'https://kaspi.kz/shop/info/merchant/shelby/address-tab/': '444 611 ₸', 'https://kaspi.kz/shop/info/merchant/altynorda/address-tab/': '445 470 ₸', 'https://kaspi.kz/shop/info/merchant/8265001/address-tab/': '475 000 ₸'})
+            db = pg.connect(user=config.db_user,
+                            password=config.db_pass,
+                            database=config.db,
+                            host=config.host,
+                            port=config.port)
+            driver = None
+            create_driver()
+            # process_prices('https://kaspi.kz/shop/p/kompressor-masljanyi-mateus-ms03307-100935415/', {'https://kaspi.kz/shop/info/merchant/61012/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/tiyn/address-tab/': '392 694 ₸', 'https://kaspi.kz/shop/info/merchant/3122014/address-tab/': '392 695 ₸', 'https://kaspi.kz/shop/info/merchant/6416001/address-tab/': '392 697 ₸', 'https://kaspi.kz/shop/info/merchant/516011/address-tab/': '392 700 ₸', 'https://kaspi.kz/shop/info/merchant/5346003/address-tab/': '392 770 ₸', 'https://kaspi.kz/shop/info/merchant/11121004/address-tab/': '393 000 ₸', 'https://kaspi.kz/shop/info/merchant/10923000/address-tab/': '393 333 ₸', 'https://kaspi.kz/shop/info/merchant/polat/address-tab/': '401 539 ₸', 'https://kaspi.kz/shop/info/merchant/2731002/address-tab/': '418 691 ₸', 'https://kaspi.kz/shop/info/merchant/5336002/address-tab/': '444 599 ₸', 'https://kaspi.kz/shop/info/merchant/shelby/address-tab/': '444 611 ₸', 'https://kaspi.kz/shop/info/merchant/altynorda/address-tab/': '445 470 ₸', 'https://kaspi.kz/shop/info/merchant/8265001/address-tab/': '475 000 ₸'})
 
-        login()
+            login()
 
-        # index_rows()
-        orders = psql.read_sql('SELECT * from order_table', db).iloc[start_idx:end_idx]
-        print(thread_name, 'Orders quant total', len(orders))
-        min_iter_no = min(orders.iter_no)
-        max_iter_no = max(orders.iter_no)
-        #TODO: Divergence why?
-        # if max_iter_no - min_iter_no > 1:
-        #     raise Exception('Divergence in iter_no')
-        if min_iter_no == max_iter_no:
-            print(thread_name, 'Starting new cycle')
+            # index_rows()
+            orders = psql.read_sql(f'SELECT * from _{customer_id}_order_table', db).iloc[start_idx:end_idx]
+            write_logs_out(thread_id, f'Orders quant total {len(orders)}')
+            min_iter_no = min(orders.iter_no)
+            max_iter_no = max(orders.iter_no)
+            # TODO: Divergence why?
+            # TODO: elapsed more than no exit()
+            if max_iter_no - min_iter_no > 1:
+                write_logs_out(thread_id, 'Divergence in iter_no')
+                raise Exception('Divergence in iter_no')
+            if min_iter_no == max_iter_no:
+                write_logs_out(thread_id, 'Starting new cycle')
+            else:
+                orders = orders[orders.iter_no == min_iter_no]
+                write_logs_out(thread_id, f'Continuing prev cycle: smallest iterated orders size = {len(orders)}')
+
+            for i in range(len(orders)):
+                start_time[0] = time.time()
+
+                order = orders.iloc[i]
+                link = order.order_link
+                min_price = order.min_price
+                to_skip = order.skip
+                iter_no = order.iter_no
+                success = False
+
+                print()
+                write_logs_out(thread_id, f'{i + 1}/{len(orders)}\n{link}')
+                while not success:
+                    try:
+                        # driver.get(link)
+                        #
+                        prices = get_price_rows(link)
+                        process_order(link, prices, min_price, to_skip, iter_no)
+                        # print(thread_name, prices)
+                        success = True
+                    except:
+                        success = False
+                        driver.back()
+                        time.sleep(5)
+
+            driver.close()
+            db.close()
         else:
-            orders = orders[orders.iter_no==min_iter_no]
-            print(thread_name, f'Continuing prev cycle: smallest iterated orders size = {len(orders)}')
-
-        for i in range(len(orders)):
-            start_time[0] = time.time()
-
-            order = orders.iloc[i]
-            link = order.order_link
-            min_price = order.min_price
-            to_skip = order.skip
-            iter_no = order.iter_no
-            success = False
-
-            print()
-            print(thread_name, f'{i + 1}/{len(orders)}')
-            print(thread_name, link)
-            while not success:
-                try:
-                    # driver.get(link)
-                    #
-                    prices = get_price_rows(link)
-                    process_order(link, prices, min_price, to_skip, iter_no)
-                    # print(thread_name, prices)
-                    success = True
-                except:
-                    success = False
-                    driver.back()
-                    time.sleep(5)
-
-        driver.close()
-        db.close()
-    else:
-        today = datetime.datetime.now()
-        wait_seconds = datetime.datetime(today.year, today.month, today.day, start_hour, start_min).timestamp() - today.timestamp()
-        print(thread_name, 'Waiting morning')
-        time.sleep(wait_seconds)
+            today = datetime.datetime.now()
+            wait_seconds = datetime.datetime(today.year, today.month, today.day, start_hour, start_min).timestamp() - today.timestamp()
+            write_logs_out(thread_id, 'Waiting morning')
+            time.sleep(wait_seconds)
+            if thread_id == '0':
+                truncate_tables()
+    except Exception as e:
+        write_logs_out(thread_id, f'ERROR {traceback.format_exc()}')
+        raise Exception(e)
 
 
 # if __name__ == '__main__':

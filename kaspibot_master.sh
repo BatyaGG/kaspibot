@@ -1,4 +1,7 @@
+python3 db_table_creator.py "$1"
+
 orders_num=$(python3 get_orders_number.py "$1")
+
 
 cleanup() {
   for i in "${!PIDS[@]}"; do
@@ -30,8 +33,8 @@ PIDS=()
 for i in "${!sq2[@]}"; do
   start="${sq1[i]}"
   end="${sq2[i]}"
-#  cmd="${cmd}sh kaspibot.sh ${*} Thread_${i} ${start} ${end} & "
-  cmd="sh kaspibot.sh ${*} Thread_${i} ${start} ${end} &"
+#  cmd="${cmd}sh kaspibot.sh ${*} ${i} ${start} ${end} & "
+  cmd="sh kaspibot.sh ${*} ${i} ${start} ${end} &"
   eval $cmd
   PID=$!
   PIDS=(${PIDS[@]} "$PID")

@@ -5,7 +5,7 @@ import math
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('db', type=str)
+parser.add_argument('customer_id', type=str)
 parser.add_argument('filename', type=str)
 parser.add_argument('orders_col_name', type=str)
 parser.add_argument('min_price_col_name', type=str)
@@ -18,7 +18,7 @@ def correct_link(x):
 
 db = pg.connect(user=config.db_user,
                 password=config.db_pass,
-                database=args.db,
+                database=config.db,
                 host=config.host,
                 port=config.port)
 
@@ -40,10 +40,10 @@ df.drop_duplicates(subset=args.orders_col_name, inplace=True)
 # df.drop_duplicates(subset='Ссылка на товар', inplace=True)
 print('len of df after', len(df))
 cursor = db.cursor()
-cursor.execute("TRUNCATE order_table")
+cursor.execute(f"TRUNCATE _{args.customer_id}_order_table")
 for i in range(len(df)):
     row = df.iloc[i]
-    cursor.execute("INSERT INTO order_table (order_link, min_price, skip, iter_no) "
+    cursor.execute(f"INSERT INTO _{args.customer_id}_order_table (order_link, min_price, skip, iter_no) "
                    "VALUES(%s, %s, %s, %s)", (row[args.orders_col_name], math.ceil(float(row[args.min_price_col_name])),
                                               True if row[args.orders_col_name] in skip_orders else False, 0))
     db.commit()
