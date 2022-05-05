@@ -1,6 +1,19 @@
+list_descendants ()
+{
+  local children=$(ps -o pid= --ppid "$1")
+
+  for pid in $children
+  do
+    list_descendants "$pid"
+  done
+
+  echo "$children"
+}
+
 cleanup() {
 #  kill $(jobs -p)
-  pkill -P $$
+#  pkill -P $$
+  kill $(list_descendants $$)
 }
 
 while true; do
