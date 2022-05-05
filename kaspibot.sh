@@ -1,5 +1,6 @@
 cleanup() {
-  kill $(jobs -p)
+#  kill $(jobs -p)
+  pkill -P $$
 }
 trap cleanup EXIT
 
