@@ -16,7 +16,8 @@ cleanup() {
   kill $(list_descendants $$)
 }
 
+trap cleanup EXIT
+
 while true; do
   eval "python3 kaspibot.py ${*}"
-  trap cleanup EXIT
 done
