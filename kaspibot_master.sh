@@ -8,6 +8,7 @@ cleanup() {
     p="${PIDS[i]}"
     kill $p
   done
+  pkill -f kaspibot.py\ "$1"
 }
 trap cleanup EXIT
 

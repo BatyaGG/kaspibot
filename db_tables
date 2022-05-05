@@ -5,3 +5,10 @@ logs - created_at, thread, log
 
 sh kaspibot_master.sh 0 https://kaspi.kz/shop/info/merchant/11056023/address-tab/ Kuanishbekkyzy@mail.ru Nurislam177@ 6 30 1 0
 sh kaspibot_master.sh 1 https://kaspi.kz/shop/info/merchant/11093021/address-tab/ samatoverasylsamatovich@gmail.com Raballaha1998! 6 30 1 0
+
+
+#  kill $(jobs -p)
+#  pkill -P $$ --signal 9
+#  kill $(ps -o pid= --ppid $$)
+#  kill $(ps -s $$ -o pid=)
+#  pkill -P $$

@@ -10,13 +10,13 @@
 #  echo "$children"
 #}
 
-cleanup() {
-#  kill $(jobs -p)
-  pkill -P $$
-#  kill $(list_descendants $$)
-}
-
-trap cleanup EXIT
+#cleanup() {
+##  kill $(jobs -p)
+#  pkill -P $$
+##  kill $(list_descendants $$)
+#}
+#
+#trap cleanup EXIT
 
 while true; do
   eval "python3 kaspibot.py ${*}"
