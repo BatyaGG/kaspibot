@@ -1,4 +1,2 @@
 id, email, password, link, filename, start_date
 0, Kuanishbekkyzy@mail.ru, Nurislam177@, https://kaspi.kz/shop/info/merchant/11056023/address-tab/, customer0_orders.csv, 04.04.2022
-1, samatoverasylsamatovich@gmail.com, Raballaha1998!, https://kaspi.kz/shop/info/merchant/11093021/address-tab/, customer1_orders.csv, 05.05.2022
-2, bdzholdibaev@gmail.com, Ct4647881@...
