@@ -260,6 +260,7 @@ def update_price(link, new_price):
 def process_order(order_link, prices, min_price, to_skip, iter_no):
     sellers_links = []
     sellers_prices = []
+
     if my_link in prices:
         my_price = int(re.sub('[^0-9]', '', prices[my_link]))
     else:
@@ -267,7 +268,7 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
         cursor = db.cursor()
         cursor.execute(f"UPDATE _{customer_id}_order_table "
                        "SET iter_no = %s, skip = %s, skip_reason = %s "
-                       "WHERE order_link = %s", (int(iter_no) + 1, True, 'iam_not_seller', link))
+                       "WHERE order_link = %s", (int(iter_no) + 1, False, 'iam_not_seller', link))
         db.commit()
         cursor.close()
         return
@@ -301,7 +302,7 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
         if not next_price or next_price == curr_price:
             if iam_top1:
                 write_logs_out(thread_id, f'Already TOP1 for {link}')
-            if desired_price == min_price:
+            if curr_price == min_price:
                 write_logs_out(thread_id, f'Already min price {min_price} for {link}')
             if desired_price != curr_price:
                 if iam_top1:
@@ -384,7 +385,7 @@ def start_time_counter(timeout, start_time):
                 cursor = db.cursor()
                 cursor.execute(f"UPDATE _{customer_id}_order_table "
                                "SET iter_no = %s, skip = %s, skip_reason = %s "
-                               "WHERE order_link = %s", (int(iter_no) + 1, True, 'no_any_seller', link))
+                               "WHERE order_link = %s", (int(iter_no) + 1, False, 'no_any_seller', link))
                 db.commit()
                 cursor.close()
             exit_handler()
