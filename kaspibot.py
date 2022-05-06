@@ -538,12 +538,12 @@ if __name__ == '__main__':
             driver.close()
             db.close()
         else:
+            if thread_id == '0':
+                truncate_tables()
             today = datetime.datetime.now()
             wait_seconds = datetime.datetime(today.year, today.month, today.day, start_hour, start_min).timestamp() - today.timestamp()
             write_logs_out(thread_id, 'Waiting morning')
             time.sleep(wait_seconds)
-            if thread_id == '0':
-                truncate_tables()
     except Exception as e:
         write_logs_out(thread_id, f'ERROR {traceback.format_exc()}')
         raise Exception(e)
