@@ -390,7 +390,7 @@ def start_time_counter(timeout, start_time):
                 cursor.close()
             exit_handler()
         time.sleep(3)
-th = Thread(target=start_time_counter, args=(30, start_time), daemon=True)
+th = Thread(target=start_time_counter, args=(60, start_time), daemon=True)
 th.start()
 
 
