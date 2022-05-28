@@ -30,7 +30,7 @@ df = pd.read_csv(args.filename, delimiter=';')
 # df = pd.read_csv('new_cc.csv', delimiter=';')
 # price_col_name = args.min_price_col_name
 # price_col_name = 'Минимум цена2'
-df = df[[args.orders_col_name, args.min_price_col_name]]
+df = df[[args.orders_col_name, args.min_price_col_name, 'cls']]
 # df = df[['Ссылка на товар', price_col_name]]
 
 df[args.orders_col_name] = df[args.orders_col_name].apply(correct_link)
