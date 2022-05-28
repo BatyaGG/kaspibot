@@ -257,7 +257,7 @@ def update_price(link, new_price):
     press_enter()
 
 
-def process_order(order_link, prices, min_price, to_skip, iter_no):
+def process_order(order_link, prices, min_price, to_skip, iter_no, cls):
     sellers_links = []
     sellers_prices = []
 
@@ -296,6 +296,12 @@ def process_order(order_link, prices, min_price, to_skip, iter_no):
         else:
             desired_price = min(sellers_prices) - 2
             desired_price = max(min_price, desired_price)
+        if cls == 1:
+            write_logs_out(thread_id, 'Class is 1')
+            if iam_top1:
+                desired_price = sellers_prices[1] + 10
+            else:
+                desired_price = sellers_prices[0] + 10
         price_status = psql.read_sql(f"SELECT * FROM _{customer_id}_current_price_status where order_link=\'{order_link}\'", db)
         curr_price = price_status.curr_price.iloc[0]
         next_price = price_status.next_price.iloc[0]
@@ -519,6 +525,7 @@ if __name__ == '__main__':
                 min_price = order.min_price
                 to_skip = order.skip
                 iter_no = order.iter_no
+                cls = order['cls']
                 success = False
 
                 print()
@@ -528,7 +535,7 @@ if __name__ == '__main__':
                         # driver.get(link)
                         #
                         prices = get_price_rows(link)
-                        process_order(link, prices, min_price, to_skip, iter_no)
+                        process_order(link, prices, min_price, to_skip, iter_no, cls)
                         # print(thread_name, prices)
                         success = True
                     except:

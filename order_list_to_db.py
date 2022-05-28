@@ -43,9 +43,9 @@ cursor = db.cursor()
 cursor.execute(f"TRUNCATE _{args.customer_id}_order_table")
 for i in range(len(df)):
     row = df.iloc[i]
-    cursor.execute(f"INSERT INTO _{args.customer_id}_order_table (order_link, min_price, skip, iter_no) "
-                   "VALUES(%s, %s, %s, %s)", (row[args.orders_col_name], math.ceil(float(row[args.min_price_col_name])),
-                                              True if row[args.orders_col_name] in skip_orders else False, 0))
+    cursor.execute(f"INSERT INTO _{args.customer_id}_order_table (order_link, min_price, skip, iter_no, class) "
+                   "VALUES(%s, %s, %s, %s, %s)", (row[args.orders_col_name], math.ceil(float(row[args.min_price_col_name])),
+                                                  True if row[args.orders_col_name] in skip_orders else False, 0, row['cls']))
     db.commit()
 
 cursor.close()

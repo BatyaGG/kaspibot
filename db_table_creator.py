@@ -23,6 +23,7 @@ cursor.execute(f"""CREATE TABLE IF NOT EXISTS _{args.customer_id}_order_table
                 (
                     order_link text NOT NULL,
                     min_price integer NOT NULL,
+                    cls integer NOT NULL,
                     skip boolean NOT NULL,
                     skip_reason text,
                     iter_no integer NOT NULL,
