@@ -299,9 +299,9 @@ def process_order(order_link, prices, min_price, to_skip, iter_no, cls):
         if cls == 1:
             write_logs_out(thread_id, 'Class is 1')
             if iam_top1:
-                desired_price = sellers_prices[1] + 10
+                desired_price = sellers_prices[1] + 1000
             else:
-                desired_price = sellers_prices[0] + 10
+                desired_price = sellers_prices[0] + 1000
         price_status = psql.read_sql(f"SELECT * FROM _{customer_id}_current_price_status where order_link=\'{order_link}\'", db)
         curr_price = price_status.curr_price.iloc[0]
         next_price = price_status.next_price.iloc[0]
