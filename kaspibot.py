@@ -444,7 +444,7 @@ def truncate_tables():
     db.commit()
     cursor.close()
     customer = customers[int(customer_id)]
-    os.system(f"python3 order_list_to_db.py {customer_id} Customer_data/{customer['filename']} Link Price")
+    os.system(f"python3 order_list_to_db.py {customer_id} Customer_data/{customer['filename']} link price")
     time.sleep(5)
 
 
