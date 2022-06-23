@@ -3,7 +3,8 @@ import os
 import time
 import argparse
 import config
-import cx_Oracle
+import psycopg2 as pg
+# import cx_Oracle
 # sys.path.append('/Users/batyagg/drivers/instantclient_19_8')
 # cx_Oracle.init_oracle_client()
 
@@ -14,15 +15,15 @@ parser = argparse.ArgumentParser()
 parser.add_argument('customer_id', type=str)
 args = parser.parse_args()
 
-# db = pg.connect(user=config.db_user,
-#                 password=config.db_pass,
-#                 database=config.db,
-#                 host=config.host,
-#                 port=config.port)
+db = pg.connect(user=config.db_user,
+                password=config.db_pass,
+                database=config.db,
+                host=config.host,
+                port=config.port)
 
-cx_Oracle.init_oracle_client(config_dir='/Users/batyagg/drivers/Wallet_dwh',
-                             lib_dir="/Users/batyagg/drivers/instantclient_19_8")
-db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
+# cx_Oracle.init_oracle_client(config_dir='/Users/batyagg/drivers/Wallet_dwh',
+#                              lib_dir="/Users/batyagg/drivers/instantclient_19_8")
+# db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
 print(args.customer_id)
 cursor = db.cursor()
 

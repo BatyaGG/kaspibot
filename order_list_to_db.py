@@ -45,13 +45,15 @@ df[args.orders_col_name] = df[args.orders_col_name].apply(correct_link)
 # df['Ссылка на товар'] = df['Ссылка на товар'].apply(correct_link)
 print('len of df before', len(df))
 df.drop_duplicates(subset=args.orders_col_name, inplace=True)
+df = df[df.link!='']
 # df.drop_duplicates(subset='Ссылка на товар', inplace=True)
 print('len of df after', len(df))
 cursor = db.cursor()
 cursor.execute(f"TRUNCATE TABLE order_table_{args.customer_id}")
 
-rows = [tuple(list(x) + [0, 'None', 0]) for x in df.values]
-cursor.executemany(f"INSERT INTO ORDER_TABLE_{args.customer_id} VALUES (:1,:2,:3,:4,:5,:6)", rows)
+rows = [tuple(list(x) + [1, 0]) for x in df.values]
+cursor.executemany(f"INSERT INTO ORDER_TABLE_{args.customer_id} (ORDER_LINK, MIN_PRICE, CLS, ACTIVE, ITER_NO)"
+                   f"VALUES (:1,:2,:3,:4,:5)", rows)
 db.commit()
 cursor.close()
 # for i in range(len(df)):
