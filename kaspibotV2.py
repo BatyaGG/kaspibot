@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 import re
 import time
 import atexit
@@ -15,6 +16,7 @@ from html.parser import HTMLParser
 
 import pandas as pd
 from bs4 import BeautifulSoup
+from selenium.webdriver import ActionChains
 
 import config
 from threading import Thread
@@ -42,6 +44,7 @@ from Customer_data.Customers import customers
 customer_id = 0
 num_tabs = 10
 timeout = 120
+price_step = 2
 
 nickname = customers[customer_id]['email']
 password = customers[customer_id]['password']
@@ -51,6 +54,7 @@ my_id = my_link.split('/')[-3]
 driver = None
 elem = []
 curr_order_link = 'None'
+city_inited = False
 
 tab_status = pd.DataFrame({'idx': [0] * num_tabs,
                            'action': ['None'] * num_tabs,
@@ -111,33 +115,34 @@ def login():
         #     driver = webdriver.Firefox(firefox_profile=fp)
         #     driver.get("https://kaspi.kz/merchantcabinet/login#/offers")
         #     success = wait_till_load_by_text('Заказы')
-    print(orders)
-    driver.get(orders.iloc[0].ORDER_LINK)
+
+
+    # if list(select_by_attr('a', 'data-city-id', "750000000")):
+    #     click_mouse()
+
+def init_city():
+    driver.get(mini_orders_all[0].iloc[0].ORDER_LINK)
     city_el = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, f"//a[@data-city-id=750000000]")))
     if len(elem) > 0:
         elem.pop()
     elem.append(city_el)
     click_mouse()
 
-    # if list(select_by_attr('a', 'data-city-id', "750000000")):
-    #     click_mouse()
 
-
-def wait_till_load_by_text(text):
+def wait_till_load_by_text(text, t=5.0):
     # driver.find_elements_by_xpath(f"//*[contains(text(), '{text}')]")
-    trials = 5
+    trials = 1
     for i in range(trials):
         try:
-            myElem = WebDriverWait(driver, 5).until(EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), text))
+            myElem = WebDriverWait(driver, t).until(EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), text))
             return True
         except TimeoutException:
+            print(f'priton {text}')
             driver.back()
             # time.sleep(1)
             driver.forward()
             # driver.refresh()
     # exit_handler()
-    write_logs_out(f'Exit handler called by wait_till_load_by_text: {text}')
-    exit()
     return False
 
 
@@ -224,10 +229,10 @@ def page_is_loaded():
 
 def init_tables():
     global db
-    cursor = db.cursor()
-    cursor.execute(f"truncate table current_price_status_{customer_id}")
-    db.commit()
-    cursor.close()
+    # cursor = db.cursor()
+    # cursor.execute(f"truncate table current_price_status_{customer_id}")
+    # db.commit()
+    # cursor.close()
     customer = customers[int(customer_id)]
     os.system(f"python3 order_list_to_db.py {customer_id} Customer_data/{customer['filename']} link price")
     time.sleep(5)
@@ -329,8 +334,7 @@ def get_price_rows():
             return False, prices
         if next_pressed:
             return True, prices
-    else:
-        return False, prices
+    return False, prices
 
 
 # def get_price_rows():
@@ -445,6 +449,15 @@ def get_price_rows():
 #     return 0
 
 
+def fill_by_class(name, fill):
+    classes = select_by_class(name)
+    for c in classes:
+        if c.get_attribute('class') == 'form__col _12-12 _medium_6-12':
+            break
+    elem[0].clear()
+    elem[0].send_keys(fill)
+
+
 def truncate_tables():
     global db
     try:
@@ -486,7 +499,7 @@ def write_prices(prices):
     cursor = db.cursor()
     cursor.execute(
         f"INSERT INTO scan_event_{customer_id} (order_link, sellers_links, sellers_names, sellers_prices) "
-        "VALUES (:1, :2, :3, :4)", (str(mini_orders.iloc[tab_status.loc[i, 'idx']].ORDER_LINK),
+        "VALUES (:1, :2, :3, :4)", (str(mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ORDER_LINK),
                                     ','.join(prices_df.seller_link.values),
                                     ','.join(prices_df.seller_name.values),
                                     ','.join(prices_df.seller_price.astype('str').values)))
@@ -494,24 +507,82 @@ def write_prices(prices):
     cursor.close()
 
 
-def parse_prices():
-    next_pressed, prices = get_price_rows()
-    if len(prices) == 0:
-        next_pressed, prices = get_price_rows()
+def index_rows():
+    success_open_offers = False
+    while not success_open_offers:
+        driver.get("https://kaspi.kz/merchantcabinet/#/offers")
+        success1 = wait_till_load_by_text('Управление товарами')
+        if not success1:
+            success2 = wait_till_load_by_text('Заказы')
+            if success2:
+                try:
+                    element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.XPATH, f"//a[@class='main-nav__el-link'][@href='#/offers']")))
+                    actions = ActionChains(driver)
+                    actions.move_to_element(element)
+                    actions.perform()
+                    element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.XPATH, f"//a[@class='main-nav__sub-el-link'][@href='#/offers']")))
+                    element.click()
+                    success_open_offers = True
+                except:
+                    pass
+        else:
+            success_open_offers = True
+    try:
+        button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CLASS_NAME, 'gwt-Button button')))
+        button.click()
+    except TimeoutException:
+        write_logs_out('NO SERVICE NEDOSTUPEN_BUTTON')
+    links = set()
+    finished = False
+    while not finished:
+        rows = []
+        while len(rows) == 0:
+            rows = list(select_by_class('offer-managment__product-cell-link'))
+            time.sleep(1)
+
+        links.update([el.get_attribute('href') for el in rows])
+        # for el in rows:
+            # print(thread_name, el)
+            # el.get_attribute('href')
+            # press_enter()
+
+        page_info = list(select_by_attr('div', 'class', 'gwt-HTML'))[-1].text
+        if page_info != '':
+            page_info = page_info.split()
+            finished = page_info[0].split('-')[1] == page_info[-1]
+            if finished:
+                # print(thread_name, 'after_finished', rows)
+                try:
+                    # print(thread_name, 'after_finished', [r.get_attribute('href') for r in rows])
+                    [r.get_attribute('href') for r in rows]
+                except:
+                    finished = False
+                    # print(thread_name, 'after_failure')
+                # print(thread_name, '---')
+        if not finished:
+            while not list(select_by_attr('img', 'aria-label', 'Next page')):
+                time.sleep(0.1)
+            # wait_till_load_by_text(' из ')
+            click_mouse()
+            wait_till_load_by_text(' из ')
+
+            # finished = True  # TODO: COMMENT
+    print(links)
+    return list(links)
 
 
-    return next_pressed, prices
-
-
-if __name__ == '__main__':
-    create_driver()
-    cx_Oracle.init_oracle_client(config_dir=config.wallet_dir,
-                                 lib_dir=config.db_lib_dir)
-    db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
-    init_tables()
+def prepare_orders():
     orders = psql.read_sql(f'SELECT * from order_table_{customer_id} order by order_link', db)
-    login()
-    open_new_tabs()
+    # orders_fact = [l[:-1] for l in index_rows()]
+    #TODO: change orders_face
+    # with open('order_fact.pk', 'wb') as file:
+    #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
+    with open('order_fact.pk', 'rb') as file:
+        orders_fact = pickle.load(file)
+
+    orders = orders[orders.ORDER_LINK.isin(orders_fact)]
+
+    print('new orders shape:', orders.shape)
 
     idx = np.linspace(0, orders.shape[0], num_tabs + 1)
     # tab_status = [[0, -1, 0, 0]] * num_tabs  # order_n, curr_phase, next_phase, time_elps
@@ -527,40 +598,83 @@ if __name__ == '__main__':
             write_logs_out(f'New cycle for {int(idx[i])}:{int(idx[i + 1])}')
         else:
             mini_orders_all[-1] = mini_orders_all[-1][mini_orders_all[-1].ITER_NO == min_iter_no]
-            write_logs_out(f'Continuing prev cycle for {int(idx[i])}:{int(idx[i + 1])}: smallest iterated orders len = {len(orders)}')
+            write_logs_out(
+                f'Continuing prev cycle for {int(idx[i])}:{int(idx[i + 1])}: smallest iterated orders len = {len(orders)}')
+    return mini_orders_all
+
+
+# def parse_prices():
+#     next_pressed, prices = get_price_rows()
+#     if len(prices) == 0:
+#         next_pressed, prices = get_price_rows()
+#     return next_pressed, prices
+
+
+if __name__ == '__main__':
+    create_driver()
+    cx_Oracle.init_oracle_client(config_dir=config.wallet_dir,
+                                 lib_dir=config.db_lib_dir)
+    db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
+    init_tables()
+    login()
+    open_new_tabs()
 
     while True:
-        print(tab_status)
-        for i, h in enumerate(driver.window_handles):
-            try:
+        start_time = time.time()
+        mini_orders_all = prepare_orders()
+        if not city_inited:
+            init_city()
+            city_inited = True
+        while time.time() - start_time < 60 * 60:
+            print(tab_status[['idx', 'action', 'status']])
+            for i, h in enumerate(driver.window_handles):
+                try:
 
-                mini_orders = mini_orders_all[i]
+                    mini_orders = mini_orders_all[i]
 
-                # mini_orders.loc[0] = {
-                #     'ORDER_LINK': 'https://kaspi.kz/shop/p/almacom-lux-chanel-ach-12lc-belyi-4200972/?c=750000000',
-                #     'MIN_PRICE': 100000,
-                #     'CLS': 0,
-                #     'SKIP': 0,
-                #     'SKIP_REASON': 'None',
-                #     'ITER_NO': 0}
-                driver.switch_to.window(h)
-                # if list(select_by_attr('a', 'data-city-id', "750000000")):
-                #     click_mouse()
-                curr_order_link = mini_orders.iloc[tab_status.loc[i % mini_orders.shape[0], 'idx']].ORDER_LINK
-                curr_order_active = mini_orders.iloc[tab_status.loc[i % mini_orders.shape[0], 'idx']].ACTIVE
-                if not curr_order_active:
-                    tab_status.loc[i % mini_orders.shape[0], 'idx'] += 1
-                    continue
-                if tab_status.loc[i, 'action'] == 'None':
-                    # start cycle
-                    driver.get(curr_order_link)
-                    change_tab_status(i, action='open_order', status='pending', start_t=True)
-                elif tab_status.loc[i, 'action'] == 'open_order':
-                    if tab_status.loc[i, 'status'] == 'pending':
-                        if page_is_loaded():
-                            change_tab_status(i, status='success')
-                    if tab_status.loc[i, 'status'] == 'success':
-                        change_tab_status(i, action='pricep_1', status='pending', start_t=True)
+                    # mini_orders.loc[0] = {
+                    #     'ORDER_LINK': 'https://kaspi.kz/shop/p/almacom-lux-chanel-ach-12lc-belyi-4200972/?c=750000000',
+                    #     'MIN_PRICE': 100000,
+                    #     'CLS': 0,
+                    #     'SKIP': 0,
+                    #     'SKIP_REASON': 'None',
+                    #     'ITER_NO': 0}
+                    driver.switch_to.window(h)
+                    # if list(select_by_attr('a', 'data-city-id', "750000000")):
+                    #     click_mouse()
+                    curr_order_link = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ORDER_LINK
+                    curr_order_active = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ACTIVE
+                    if not curr_order_active:
+                        tab_status.loc[i, 'idx'] += 1
+                        continue
+                    if tab_status.loc[i, 'action'] == 'None':
+                        # start cycle
+                        driver.get(curr_order_link)
+                        change_tab_status(i, action='open_order', status='pending', start_t=True)
+                    elif tab_status.loc[i, 'action'] == 'open_order':
+                        if tab_status.loc[i, 'status'] == 'pending':
+                            if page_is_loaded():
+                                change_tab_status(i, status='success')
+                        if tab_status.loc[i, 'status'] == 'success':
+                            change_tab_status(i, action='pricep_1', status='pending', start_t=True)
+                            next_pressed, prices = get_price_rows()
+                            if len(prices) == 0:
+                                next_pressed, prices = get_price_rows()
+                            if next_pressed:
+                                action = tab_status.loc[i]['action']
+                                action_no = int(action.split('_')[1])
+                                change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending', start_t=True,
+                                                  strings=json.dumps(prices))
+                            else:
+                                if len(prices) > 0:
+                                    write_prices(prices)
+                                    # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
+                                    change_tab_status(i, action=f'process_order', status='pending',
+                                                      start_t=True, strings=json.dumps(prices))
+                                else:
+                                    # change_tab_status(i, action=f'None', idx=tab_status.loc[i]['idx'] + 1)
+                                    raise Exception('No any seller')
+                    elif 'pricep' in tab_status.loc[i, 'action']:
                         next_pressed, prices = get_price_rows()
                         if len(prices) == 0:
                             next_pressed, prices = get_price_rows()
@@ -568,55 +682,152 @@ if __name__ == '__main__':
                             action = tab_status.loc[i]['action']
                             action_no = int(action.split('_')[1])
                             change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending', start_t=True,
-                                              strings=json.dumps(prices))
+                                              strings=tab_status.loc[i]['strings'] + '|+|' + json.dumps(prices))
                         else:
-                            if len(prices) > 0:
-                                write_prices(prices)
-                                change_tab_status(i, action=f'None', idx=tab_status.loc[i]['idx'] + 1)
+                            strings = tab_status.loc[i]['strings']
+                            strings = strings.split('|+|')
+                            strings = [json.loads(s) for s in strings]
+                            res = {}
+                            for p in strings + [prices]:
+                                res.update(p)
+                            write_prices(res)
+                            if len(prices) == 0:
+                                raise Exception('No seller on last page')
+                            # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
+                            change_tab_status(i, action=f'process_order', status='pending', start_t=True,
+                                              strings=json.dumps(res))
+                    elif tab_status.loc[i, 'action'] == 'process_order':
+                        if tab_status.loc[i, 'status'] == 'pending':
+                            prices = json.loads(tab_status.loc[i]['strings'])
+                            im_seller = my_link in prices
+                            if im_seller:
+                                my_rank = [i for i, k in enumerate(prices) if k == my_link][0]
+                                my_curr_price = prices[my_link][1]
+                                min_price = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].MIN_PRICE
+
+                                cursor = db.cursor()
+                                cursor.execute(f"""merge into current_price_status_{customer_id} tgt 
+                                                using (select :1 order_link, :2 curr_rank, :3 curr_price, :4 min_price from dual) src 
+                                                on (src.order_link = tgt.order_link) 
+                                                when matched then 
+                                                update set tgt.curr_rank = src.curr_rank, tgt.curr_price = src.curr_price, tgt.min_price = src.min_price 
+                                                when not matched then 
+                                                insert (order_link, curr_rank, curr_price, min_price) 
+                                                values (src.order_link, src.curr_rank, src.curr_price, src.min_price)""",
+                                               (curr_order_link, my_rank + 1, my_curr_price, int(min_price)))
+                                db.commit()
+                                cursor.close()
+
+                                top1_price = prices[list(prices)[0]][1]
+                                top1_price = prices[list(prices)[0]][1]
+                                top2_price = prices[list(prices)[1]][1]
+
+                                if my_rank != 0:
+                                    desired_price = top1_price - price_step
+                                else:
+                                    desired_price = top2_price - price_step
+                                desired_price = max(min_price, desired_price)
+                                if desired_price == min_price:
+                                    write_logs_out('Desired price = min price')
+                                if desired_price == my_curr_price:
+                                    write_logs_out('Already desired price')
+                                    change_tab_status(i, action='None', idx=tab_status.loc[i]['idx'] + 1)
+                                else:
+                                    link = f"https://kaspi.kz/merchantcabinet/#/offers/edit/{curr_order_link.split('-')[-1]}_{my_id}"
+                                    driver.get(link)
+                                    # got_page = False
+                                    # while not got_page:
+                                    #     success1 = wait_till_load_by_text('Заказы')
+                                    #     if success1:
+                                    #         driver.get(link)
+                                    #     else:
+                                    #         continue
+                                    #     got_page = wait_till_load_by_text('Редактирование товара')
+                                    # radios = select_by_class('form__radio-title')
+                                    # pass
+                                    change_tab_status(i, action='process_order2', status='pending',
+                                                      strings=link + '|+|' + str(desired_price))
                             else:
-                                change_tab_status(i, action=f'None', idx=tab_status.loc[i]['idx'] + 1)
-                                raise Exception('No any seller')
-                elif 'pricep' in tab_status.loc[i, 'action']:
-                    next_pressed, prices = get_price_rows()
-                    if len(prices) == 0:
-                        next_pressed, prices = get_price_rows()
-                    if next_pressed:
-                        action = tab_status.loc[i]['action']
-                        action_no = int(action.split('_')[1])
-                        change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending', start_t=True,
-                                          strings=tab_status.loc[i]['strings'] + '|+|' + json.dumps(prices))
+                                # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
+                                raise Exception('I am not seller')
+                    elif tab_status.iloc[i]['action'] == 'process_order2':
+                        if tab_status.iloc[i]['status'] == 'pending':
+                            # 'main-nav__el-link'
+                            try:
+                                success1 = wait_till_load_by_text('Заказы', t=0.5)
+                                if success1:
+                                    change_tab_status(i, status='success')
+                            except TimeoutException:
+                                write_logs_out('ZAKAZY NOT LOADED')
+                        if tab_status.loc[i]['status'] == 'success':
+                            link = tab_status.loc[i]['strings'].split('|+|')[0]
+                            driver.get(link)
+                            change_tab_status(i, action='process_order3', status='pending')
+                    elif tab_status.loc[i]['action'] == 'process_order3':
+                        if tab_status.loc[i]['status'] == 'pending':
+                            try:
+                                got_page = wait_till_load_by_text('Редактирование товара', t=0.5)
+                                if got_page:
+                                    change_tab_status(i, status='success')
+                            except TimeoutException:
+                                write_logs_out('REDAKTIROVANIE TOVARA NOT LOADED')
+                        if tab_status.loc[i]['status'] == 'success':
+                            was_exception = False
+                            try:
+                                new_price = tab_status.loc[i]['strings'].split('|+|')[1]
+                                radios = select_by_class('form__radio-title')
+
+                                for radio in radios:
+                                    if radio.text == 'Одна для всех городов':
+                                        break
+                                click_mouse()
+                                fill_by_class('form__col', new_price)
+
+                                buttons = select_by_tag('button')
+                                for button in buttons:
+                                    if button.text == 'Сохранить':
+                                        break
+                                press_enter()
+                                cursor = db.cursor()
+                                cursor.execute(f"""UPDATE CURRENT_PRICE_STATUS_{customer_id} 
+                                               SET NEXT_PRICE = :1, LAST_UPDATE_AT = systimestamp
+                                               WHERE ORDER_LINK = :2""", (int(new_price), curr_order_link))
+                                db.commit()
+                                cursor.close()
+                                change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
+                            except StaleElementReferenceException:
+                                was_exception = True
+                                write_logs_out(traceback.format_exc())
+                            if was_exception:
+                                try:
+                                    button = WebDriverWait(driver, 1).until(
+                                        EC.element_to_be_clickable((By.CLASS_NAME, 'gwt-Button button')))
+                                    button.click()
+                                except TimeoutException:
+                                    write_logs_out('NO SERVICE NEDOSTUPEN_BUTTON BUT PAGE IS STALE')
+                                    raise TimeoutException()
                     else:
-                        strings = tab_status.loc[i]['strings']
-                        strings = strings.split('|+|')
-                        strings = [json.loads(s) for s in strings]
-                        res = {}
-                        for p in strings + [prices]:
-                            res.update(p)
-                        write_prices(res)
-                        if len(prices) == 0:
-                            raise Exception('No seller on last page')
-                        change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
-                else:
-                    raise NotImplementedError('Not implemented action')
-            except Exception as e:
-                change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
-                write_logs_out(traceback.format_exc())
-            # time.sleep(1)
+                        # print(tab_status.loc[i, 'action'])
+                        raise NotImplementedError(f"Not implemented action {tab_status.loc[i, 'action']}")
+                except Exception as e:
+                    change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
+                    write_logs_out(traceback.format_exc())
+                # time.sleep(1)
 
-            # if curr_stat == 0:
-            #     driver.get(mini_orders.iloc[status[0]])
-            #     tab_status[i][2] = 1
-            #     tab_status[i][3] = int(time.time())
-            # elif curr_stat == 1:
-            #
-            # print('currstat', curr_stat)
+                # if curr_stat == 0:
+                #     driver.get(mini_orders.iloc[status[0]])
+                #     tab_status[i][2] = 1
+                #     tab_status[i][3] = int(time.time())
+                # elif curr_stat == 1:
+                #
+                # print('currstat', curr_stat)
 
-    # body = driver.find_element_by_tag_name("body")
-    # print(body)
-    # body.send_keys(Keys.COMMAND + 't')
-    # driver.execute_script(f"window.open(\"http://www.mozilla.org/\", \"asdasd\", \"popup\")")
-    # current_tab = driver.current_window_handle
-    # driver.execute_script('''window.open("https://www.google.com", "_blank");''')
-    # driver.find_element_by_tag_name('body').send_keys(Keys.COMMAND + 't')
-    # login()
-    # time.sleep(10)
+        # body = driver.find_element_by_tag_name("body")
+        # print(body)
+        # body.send_keys(Keys.COMMAND + 't')
+        # driver.execute_script(f"window.open(\"http://www.mozilla.org/\", \"asdasd\", \"popup\")")
+        # current_tab = driver.current_window_handle
+        # driver.execute_script('''window.open("https://www.google.com", "_blank");''')
+        # driver.find_element_by_tag_name('body').send_keys(Keys.COMMAND + 't')
+        # login()
+        # time.sleep(10)

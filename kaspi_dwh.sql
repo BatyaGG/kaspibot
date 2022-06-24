@@ -10,7 +10,7 @@ CREATE TABLE ORDER_TABLE_0
 
 CREATE TABLE scan_event_0
 (
-    created_at timestamp DEFAULT systimestamp,
+    created_at timestamp with time zone DEFAULT systimestamp,
     order_link VARCHAR2(200) NOT NULL,
     sellers_links VARCHAR2(30000),
     sellers_names VARCHAR2(5000),
@@ -20,8 +20,11 @@ CREATE TABLE scan_event_0
 CREATE TABLE current_price_status_0
 (
     order_link VARCHAR2(200) NOT NULL,
+    curr_rank NUMBER(2,0),
     curr_price NUMBER(9,0),
     next_price NUMBER(9,0),
+    min_price NUMBER(9,0) NOT NULL,
+    last_update_at timestamp with time zone,
     PRIMARY KEY (order_link)
 );
 
@@ -31,3 +34,12 @@ CREATE TABLE logs_0
     order_link VARCHAR2(500) NOT NULL,
     log_text VARCHAR2(5000) NOT NULL
 );
+
+
+merge into current_price_status_0 tgt
+using (select 'b' order_link, 3 curr_rank, 10 curr_price from dual) src
+on (src.order_link = tgt.order_link)
+when matched then
+update set tgt.curr_rank = src.curr_rank, tgt.curr_price = src.curr_price
+when not matched then
+insert (order_link, curr_rank, curr_price) values (src.order_link, src.curr_rank, src.curr_price);
