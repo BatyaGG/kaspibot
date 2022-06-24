@@ -56,6 +56,7 @@ cursor.executemany(f"INSERT INTO ORDER_TABLE_{args.customer_id} (ORDER_LINK, MIN
                    f"VALUES (:1,:2,:3,:4,:5)", rows)
 db.commit()
 cursor.close()
+db.close()
 # for i in range(len(df)):
 #     row = df.iloc[i]
 #     cursor.execute(f"INSERT INTO _{args.customer_id}_order_table (order_link, min_price, skip, iter_no, cls) "

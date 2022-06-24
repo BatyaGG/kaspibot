@@ -190,8 +190,8 @@ def exit_handler():
     # for h in driver.window_handles:
     #     driver.switch_to.window(h)
     #     driver.close()
-    # driver.quit()
     db.close()
+    driver.quit()
     # write_logs_out('Got kill signal')
     # write_logs_out('Closed driver and db')
     # os.kill(os.getpid(), 9)
@@ -233,8 +233,8 @@ def init_tables():
     # cursor.execute(f"truncate table current_price_status_{customer_id}")
     # db.commit()
     # cursor.close()
-    customer = customers[int(customer_id)]
-    os.system(f"python3 order_list_to_db.py {customer_id} Customer_data/{customer['filename']} link price")
+    # customer = customers[int(customer_id)]
+    os.system(f"python order_list_to_db.py {customer_id} link price")
     time.sleep(5)
 
 
@@ -566,19 +566,18 @@ def index_rows():
             click_mouse()
             wait_till_load_by_text(' из ')
 
-            # finished = True  # TODO: COMMENT
     print(links)
     return list(links)
 
 
 def prepare_orders():
     orders = psql.read_sql(f'SELECT * from order_table_{customer_id} order by order_link', db)
-    # orders_fact = [l[:-1] for l in index_rows()]
-    #TODO: change orders_face
+    orders_fact = [l[:-1] for l in index_rows()]
+    # TODO: change orders_face
     # with open('order_fact.pk', 'wb') as file:
     #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
-    with open('order_fact.pk', 'rb') as file:
-        orders_fact = pickle.load(file)
+    # with open('order_fact.pk', 'rb') as file:
+    #     orders_fact = pickle.load(file)
 
     orders = orders[orders.ORDER_LINK.isin(orders_fact)]
 
