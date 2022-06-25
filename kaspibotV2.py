@@ -1,39 +1,27 @@
-import json
-import os
-import pickle
 import re
 import time
 import atexit
 import traceback
 import warnings
-import datetime
 import sys
 import os
-import html
-import argparse
 import json
-from html.parser import HTMLParser
 
 import pandas as pd
-from bs4 import BeautifulSoup
 from selenium.webdriver import ActionChains
 
 import config
-from threading import Thread
 warnings.filterwarnings("ignore")
 
 import numpy as np
-import psycopg2 as pg
 import pandas.io.sql as psql
 import cx_Oracle
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
-# from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.firefox.options import Options
 from selenium.common.exceptions import StaleElementReferenceException
 
