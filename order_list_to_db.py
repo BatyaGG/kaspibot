@@ -51,9 +51,9 @@ print('len of df after', len(df))
 cursor = db.cursor()
 cursor.execute(f"TRUNCATE TABLE order_table_{args.customer_id}")
 
-rows = [tuple(list(x) + [1, 0]) for x in df.values]
-cursor.executemany(f"INSERT INTO ORDER_TABLE_{args.customer_id} (ORDER_LINK, MIN_PRICE, CLS, ACTIVE, ITER_NO)"
-                   f"VALUES (:1,:2,:3,:4,:5)", rows)
+rows = [tuple(list(x) + [1]) for x in df.values]
+cursor.executemany(f"INSERT INTO ORDER_TABLE_{args.customer_id} (ORDER_LINK, MIN_PRICE, CLS, ACTIVE)"
+                   f"VALUES (:1,:2,:3,:4)", rows)
 db.commit()
 cursor.close()
 db.close()

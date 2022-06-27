@@ -1,4 +1,5 @@
 import re
+import signal
 import time
 import atexit
 import traceback
@@ -6,6 +7,7 @@ import warnings
 import sys
 import os
 import json
+from threading import Thread
 
 import pandas as pd
 from selenium.webdriver import ActionChains
@@ -21,7 +23,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 from selenium.webdriver.firefox.options import Options
 from selenium.common.exceptions import StaleElementReferenceException
 
@@ -31,7 +33,8 @@ from Customer_data.Customers import customers
 
 customer_id = 0
 num_tabs = 10
-timeout = 120
+timeout_tab = 5 * 60
+timeout_restart = 60 * 60
 price_step = 2
 
 nickname = customers[customer_id]['email']
@@ -47,8 +50,39 @@ city_inited = False
 tab_status = pd.DataFrame({'idx': [0] * num_tabs,
                            'action': ['None'] * num_tabs,
                            'status': ['None'] * num_tabs,
-                           'start_t': [0] * num_tabs,
+                           'start_t': [time.time()] * num_tabs,
                            'strings': [''] * num_tabs})
+
+
+def init_vars():
+    global driver, elem, curr_order_link, city_inited, tab_status
+    driver = None
+    elem = []
+    curr_order_link = 'None'
+    city_inited = False
+
+    tab_status = pd.DataFrame({'idx': [0] * num_tabs,
+                               'action': ['None'] * num_tabs,
+                               'status': ['None'] * num_tabs,
+                               'start_t': [time.time()] * num_tabs,
+                               'strings': [''] * num_tabs})
+
+
+def exit_handler():
+    global driver, db
+    try:
+        db.close()
+        print('closed db')
+    except:
+        print('db already closed')
+    try:
+        driver.quit()
+        print('closed driver')
+    except:
+        print('driver already closed')
+    os.system('pkill -9 firefox')
+    print('called pkill')
+atexit.register(exit_handler)
 
 
 def create_driver():
@@ -125,7 +159,6 @@ def wait_till_load_by_text(text, t=5.0):
             myElem = WebDriverWait(driver, t).until(EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), text))
             return True
         except TimeoutException:
-            print(f'priton {text}')
             driver.back()
             # time.sleep(1)
             driver.forward()
@@ -173,19 +206,6 @@ def select_by_class(name):
         yield el
 
 
-def exit_handler():
-    global driver, db
-    # for h in driver.window_handles:
-    #     driver.switch_to.window(h)
-    #     driver.close()
-    db.close()
-    driver.quit()
-    # write_logs_out('Got kill signal')
-    # write_logs_out('Closed driver and db')
-    # os.kill(os.getpid(), 9)
-atexit.register(exit_handler)
-
-
 def press_enter():
     elem[0].send_keys(Keys.RETURN)
 
@@ -215,13 +235,7 @@ def page_is_loaded():
         return False
 
 
-def init_tables():
-    global db
-    # cursor = db.cursor()
-    # cursor.execute(f"truncate table current_price_status_{customer_id}")
-    # db.commit()
-    # cursor.close()
-    # customer = customers[int(customer_id)]
+def init_orders_table():
     os.system(f"python order_list_to_db.py {customer_id} link price")
     time.sleep(5)
 
@@ -446,26 +460,6 @@ def fill_by_class(name, fill):
     elem[0].send_keys(fill)
 
 
-def truncate_tables():
-    global db
-    try:
-        db.close()
-    except:
-        pass
-    # db = pg.connect(user=config.db_user,
-    #                 password=config.db_pass,
-    #                 database=config.db,
-    #                 host=config.host,
-    #                 port=config.port)
-    cursor = db.cursor()
-    cursor.execute(f"truncate _{customer_id}_current_price_status")
-    db.commit()
-    cursor.close()
-    customer = customers[int(customer_id)]
-    os.system(f"python3 order_list_to_db.py {customer_id} Customer_data/{customer['filename']} link price")
-    time.sleep(5)
-
-
 def change_tab_status(i, idx=None, action=None, status=None, start_t=False, strings=None):
     if idx:
         tab_status.loc[i, 'idx'] = idx
@@ -516,6 +510,8 @@ def index_rows():
         else:
             success_open_offers = True
     try:
+        # button = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'gwt-Button button')))
+        curtain = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.CLASS_NAME, 'ks-gwt-dialog _small g-ta-c')))
         button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CLASS_NAME, 'gwt-Button button')))
         button.click()
     except TimeoutException:
@@ -576,17 +572,17 @@ def prepare_orders():
     mini_orders_all = []
     for i in range(len(driver.window_handles)):
         mini_orders_all.append(orders.iloc[int(idx[i]):int(idx[i + 1])])
-        min_iter_no = min(mini_orders_all[-1].ITER_NO)
-        max_iter_no = max(mini_orders_all[-1].ITER_NO)
-        if max_iter_no - min_iter_no > 1:
-            write_logs_out(f'Divergence in iter_no for {int(idx[i])}:{int(idx[i + 1])}')
-            raise Exception(f'Divergence in iter_no for {int(idx[i])}:{int(idx[i + 1])}')
-        if min_iter_no == max_iter_no:
-            write_logs_out(f'New cycle for {int(idx[i])}:{int(idx[i + 1])}')
-        else:
-            mini_orders_all[-1] = mini_orders_all[-1][mini_orders_all[-1].ITER_NO == min_iter_no]
-            write_logs_out(
-                f'Continuing prev cycle for {int(idx[i])}:{int(idx[i + 1])}: smallest iterated orders len = {len(orders)}')
+        # min_iter_no = min(mini_orders_all[-1].ITER_NO)
+        # max_iter_no = max(mini_orders_all[-1].ITER_NO)
+        # if max_iter_no - min_iter_no > 1:
+        #     write_logs_out(f'Divergence in iter_no for {int(idx[i])}:{int(idx[i + 1])}')
+        #     raise Exception(f'Divergence in iter_no for {int(idx[i])}:{int(idx[i + 1])}')
+        # if min_iter_no == max_iter_no:
+        #     write_logs_out(f'New cycle for {int(idx[i])}:{int(idx[i + 1])}')
+        # else:
+        #     mini_orders_all[-1] = mini_orders_all[-1][mini_orders_all[-1].ITER_NO == min_iter_no]
+        #     write_logs_out(
+        #         f'Continuing prev cycle for {int(idx[i])}:{int(idx[i + 1])}: smallest iterated orders len = {len(orders)}')
     return mini_orders_all
 
 
@@ -597,38 +593,43 @@ def prepare_orders():
 #     return next_pressed, prices
 
 
+def check_tab_timeout():
+    def check_tab_timeout_helper():
+        while True:
+            if any(time.time() - tab_status.start_t > timeout_tab):
+                write_logs_out('Timeout at tab')
+                exit_handler()
+                os._exit(os.EX_OK)
+            time.sleep(30)
+    th = Thread(target=check_tab_timeout_helper)
+    th.start()
+
+
 if __name__ == '__main__':
-    create_driver()
+    start_time = 0
     cx_Oracle.init_oracle_client(config_dir=config.wallet_dir,
                                  lib_dir=config.db_lib_dir)
-    db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
-    init_tables()
-    login()
-    open_new_tabs()
 
     while True:
+        init_vars()
+        create_driver()
+        db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
+        login()
+        open_new_tabs()
+
         start_time = time.time()
+        check_tab_timeout()
+        init_orders_table()
         mini_orders_all = prepare_orders()
         if not city_inited:
             init_city()
             city_inited = True
-        while time.time() - start_time < 60 * 60:
+        while time.time() - start_time < timeout_restart:
             print(tab_status[['idx', 'action', 'status']])
             for i, h in enumerate(driver.window_handles):
                 try:
-
                     mini_orders = mini_orders_all[i]
-
-                    # mini_orders.loc[0] = {
-                    #     'ORDER_LINK': 'https://kaspi.kz/shop/p/almacom-lux-chanel-ach-12lc-belyi-4200972/?c=750000000',
-                    #     'MIN_PRICE': 100000,
-                    #     'CLS': 0,
-                    #     'SKIP': 0,
-                    #     'SKIP_REASON': 'None',
-                    #     'ITER_NO': 0}
                     driver.switch_to.window(h)
-                    # if list(select_by_attr('a', 'data-city-id', "750000000")):
-                    #     click_mouse()
                     curr_order_link = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ORDER_LINK
                     curr_order_active = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ACTIVE
                     if not curr_order_active:
@@ -706,7 +707,6 @@ if __name__ == '__main__':
                                 cursor.close()
 
                                 top1_price = prices[list(prices)[0]][1]
-                                top1_price = prices[list(prices)[0]][1]
                                 top2_price = prices[list(prices)[1]][1]
 
                                 if my_rank != 0:
@@ -782,16 +782,19 @@ if __name__ == '__main__':
                                 db.commit()
                                 cursor.close()
                                 change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
-                            except StaleElementReferenceException:
+                            except ElementClickInterceptedException:
                                 was_exception = True
                                 write_logs_out(traceback.format_exc())
                             if was_exception:
                                 try:
+                                    curtain = WebDriverWait(driver, 1).until(EC.visibility_of_element_located(
+                                        (By.CLASS_NAME, 'ks-gwt-dialog _small g-ta-c')))
                                     button = WebDriverWait(driver, 1).until(
                                         EC.element_to_be_clickable((By.CLASS_NAME, 'gwt-Button button')))
                                     button.click()
                                 except TimeoutException:
                                     write_logs_out('NO SERVICE NEDOSTUPEN_BUTTON BUT PAGE IS STALE')
+                                    write_logs_out(traceback.format_exc())
                                     raise TimeoutException()
                     else:
                         # print(tab_status.loc[i, 'action'])
@@ -799,22 +802,6 @@ if __name__ == '__main__':
                 except Exception as e:
                     change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
                     write_logs_out(traceback.format_exc())
-                # time.sleep(1)
+        exit_handler()
 
-                # if curr_stat == 0:
-                #     driver.get(mini_orders.iloc[status[0]])
-                #     tab_status[i][2] = 1
-                #     tab_status[i][3] = int(time.time())
-                # elif curr_stat == 1:
-                #
-                # print('currstat', curr_stat)
-
-        # body = driver.find_element_by_tag_name("body")
-        # print(body)
-        # body.send_keys(Keys.COMMAND + 't')
-        # driver.execute_script(f"window.open(\"http://www.mozilla.org/\", \"asdasd\", \"popup\")")
-        # current_tab = driver.current_window_handle
-        # driver.execute_script('''window.open("https://www.google.com", "_blank");''')
-        # driver.find_element_by_tag_name('body').send_keys(Keys.COMMAND + 't')
-        # login()
-        # time.sleep(10)
+# selenium.common.exceptions.ElementClickInterceptedException: Message: Element <label class="form__radio-title"> is not clickable at point (511,611) because another element <div class="ks-gwt-dialog _small g-ta-c"> obscures it

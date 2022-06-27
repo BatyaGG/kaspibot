@@ -4,7 +4,6 @@ CREATE TABLE ORDER_TABLE_0
     min_price NUMBER(9,0) NOT NULL,
     cls NUMBER(2,0) NOT NULL,
     active NUMBER(1,0) NOT NULL,
-    iter_no NUMBER(4,0) NOT NULL,
     PRIMARY KEY (order_link)
 );
 
