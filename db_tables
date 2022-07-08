@@ -12,3 +12,4 @@ sh kaspibot_master.sh 1 https://kaspi.kz/shop/info/merchant/11093021/address-tab
 #  kill $(ps -o pid= --ppid $$)
 #  kill $(ps -s $$ -o pid=)
 #  pkill -P $$
+otverjenniy

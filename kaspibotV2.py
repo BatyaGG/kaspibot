@@ -1,3 +1,4 @@
+import pickle
 import re
 import signal
 import time
@@ -32,7 +33,7 @@ sys.path.append('Customer_data')
 from Customer_data.Customers import customers
 
 customer_id = 0
-num_tabs = 10
+num_tabs = 5
 timeout_tab = 5 * 60
 timeout_restart = 60 * 60
 price_step = 2
@@ -242,19 +243,25 @@ def init_orders_table():
 
 def get_price_rows():
     prices = {}
-
+    no_fail = False
     # while True:
-    try:
-        WebDriverWait(driver, 3).until(EC.element_to_be_clickable((By.CLASS_NAME, 'sellers-table__buy-cell-button')))
-    except TimeoutException:
-        write_logs_out(traceback.format_exc())
+    while not no_fail:
         try:
-            WebDriverWait(driver, 3).until(
-                EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), 'К сожалению, в настоящее время'))
-            write_logs_out('No seller')
+            WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.CLASS_NAME, 'sellers-table__buy-cell-button')))
+            no_fail = True
         except TimeoutException:
             write_logs_out(traceback.format_exc())
-            raise Exception('MANUAL EXCEPTION 1')
+            try:
+                WebDriverWait(driver, 2).until(
+                    EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), 'К сожалению, в настоящее время'))
+                write_logs_out('No seller')
+                print('refresh 1')
+                driver.refresh()
+            except TimeoutException:
+                write_logs_out(traceback.format_exc())
+                print('refresh 2')
+                driver.refresh()
+                raise Exception('MANUAL EXCEPTION 1')
     was_exception = False
     rows_scanned = False
     while not rows_scanned:
@@ -297,6 +304,7 @@ def get_price_rows():
             # print(name)
             # print(prc)
             href = 'https://kaspi.kz' + inner_html[inner_html.find('href'):].split('"')[1]
+            href = href.split('?')[0]
             # print(href)
             prices[href] = (name, prc)
             # print(name)
@@ -555,13 +563,13 @@ def index_rows():
 
 
 def prepare_orders():
-    orders = psql.read_sql(f'SELECT * from order_table_{customer_id} order by order_link', db)
-    orders_fact = [l[:-1] for l in index_rows()]
+    orders = psql.read_sql(f'SELECT * from order_table_{customer_id}', db)
+    # orders_fact = [l[:-1] for l in index_rows()]
     # TODO: change orders_face
     # with open('order_fact.pk', 'wb') as file:
     #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
-    # with open('order_fact.pk', 'rb') as file:
-    #     orders_fact = pickle.load(file)
+    with open('order_fact.pk', 'rb') as file:
+        orders_fact = pickle.load(file)
 
     orders = orders[orders.ORDER_LINK.isin(orders_fact)]
 
@@ -664,8 +672,8 @@ if __name__ == '__main__':
                                     raise Exception('No any seller')
                     elif 'pricep' in tab_status.loc[i, 'action']:
                         next_pressed, prices = get_price_rows()
-                        if len(prices) == 0:
-                            next_pressed, prices = get_price_rows()
+                        # if len(prices) == 0:
+                        #     next_pressed, prices = get_price_rows()
                         if next_pressed:
                             action = tab_status.loc[i]['action']
                             action_no = int(action.split('_')[1])
@@ -687,9 +695,10 @@ if __name__ == '__main__':
                     elif tab_status.loc[i, 'action'] == 'process_order':
                         if tab_status.loc[i, 'status'] == 'pending':
                             prices = json.loads(tab_status.loc[i]['strings'])
-                            im_seller = my_link in prices
+                            print(prices)
+                            im_seller = any([my_id in p for p in prices])
                             if im_seller:
-                                my_rank = [i for i, k in enumerate(prices) if k == my_link][0]
+                                my_rank = [i for i, k in enumerate(prices) if my_id in k][0]
                                 my_curr_price = prices[my_link][1]
                                 min_price = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].MIN_PRICE
 
@@ -805,3 +814,4 @@ if __name__ == '__main__':
         exit_handler()
 
 # selenium.common.exceptions.ElementClickInterceptedException: Message: Element <label class="form__radio-title"> is not clickable at point (511,611) because another element <div class="ks-gwt-dialog _small g-ta-c"> obscures it
+# https://kaspi.kz/shop/p/artel-dolce-21-ex-belyi-2602172/?c=750000000
