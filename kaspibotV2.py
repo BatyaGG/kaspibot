@@ -33,7 +33,7 @@ sys.path.append('Customer_data')
 from Customer_data.Customers import customers
 
 customer_id = 0
-num_tabs = 5
+num_tabs = 10
 timeout_tab = 5 * 60
 timeout_restart = 60 * 60
 price_step = 2
@@ -788,6 +788,7 @@ if __name__ == '__main__':
                                 cursor.execute(f"""UPDATE CURRENT_PRICE_STATUS_{customer_id} 
                                                SET NEXT_PRICE = :1, LAST_UPDATE_AT = systimestamp
                                                WHERE ORDER_LINK = :2""", (int(new_price), curr_order_link))
+                                write_logs_out(f'Updating price to {new_price}')
                                 db.commit()
                                 cursor.close()
                                 change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
