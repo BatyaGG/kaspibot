@@ -564,12 +564,12 @@ def index_rows():
 
 def prepare_orders():
     orders = psql.read_sql(f'SELECT * from order_table_{customer_id}', db)
-    # orders_fact = [l[:-1] for l in index_rows()]
+    orders_fact = [l[:-1] for l in index_rows()]
     # TODO: change orders_face
     # with open('order_fact.pk', 'wb') as file:
     #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
-    with open('order_fact.pk', 'rb') as file:
-        orders_fact = pickle.load(file)
+    # with open('order_fact.pk', 'rb') as file:
+    #     orders_fact = pickle.load(file)
 
     orders = orders[orders.ORDER_LINK.isin(orders_fact)]
 
