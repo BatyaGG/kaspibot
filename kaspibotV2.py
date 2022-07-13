@@ -520,7 +520,7 @@ def index_rows():
         button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CLASS_NAME, 'gwt-Button button')))
         button.click()
     except TimeoutException:
-        write_logs_out('NO SERVICE NEDOSTUPEN_BUTTON')
+        write_logs_out('INFO', 'NO SERVICE NEDOSTUPEN_BUTTON')
     links = set()
     finished = False
     while not finished:
