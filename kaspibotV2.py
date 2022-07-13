@@ -76,13 +76,13 @@ def exit_handler():
         print('closed db')
     except:
         print('db already closed')
-    try:
-        driver.quit()
-        print('closed driver')
-    except:
-        print('driver already closed')
-    os.system('pkill -9 firefox')
-    print('called pkill')
+    # try:
+    #     driver.quit()
+    #     print('closed driver')
+    # except:
+    #     print('driver already closed')
+    # os.system('pkill -9 firefox')
+    # print('called pkill')
 atexit.register(exit_handler)
 
 
@@ -215,17 +215,19 @@ def click_mouse():
     elem[0].click()
 
 
-def write_logs_out(text):
+def write_logs_out(lvl, text, write_db=True):
     global curr_order_link
     print('_______________________')
     print(curr_order_link)
+    print(lvl)
     print(text)
     print()
-    cursor = db.cursor()
-    cursor.execute(f"INSERT INTO LOGS_{customer_id} (ORDER_LINK, LOG_TEXT) "
-                   "VALUES (:2, :3) ", (curr_order_link, text))
-    db.commit()
-    cursor.close()
+    if write_db:
+        cursor = db.cursor()
+        cursor.execute(f"INSERT INTO LOGS_{customer_id} (ORDER_LINK, LOG_LEVEL, LOG_TEXT) "
+                       "VALUES (:1, :2, :3) ", (curr_order_link, lvl, text))
+        db.commit()
+        cursor.close()
 
 
 def page_is_loaded():
@@ -250,18 +252,19 @@ def get_price_rows():
             WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.CLASS_NAME, 'sellers-table__buy-cell-button')))
             no_fail = True
         except TimeoutException:
-            write_logs_out(traceback.format_exc())
-            try:
-                WebDriverWait(driver, 2).until(
-                    EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), 'К сожалению, в настоящее время'))
-                write_logs_out('No seller')
-                print('refresh 1')
-                driver.refresh()
-            except TimeoutException:
-                write_logs_out(traceback.format_exc())
-                print('refresh 2')
-                driver.refresh()
-                raise Exception('MANUAL EXCEPTION 1')
+            write_logs_out('DEBUG', 'Seller table load fail')
+            return False, None
+            # try:
+            #     WebDriverWait(driver, 2).until(
+            #         EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), 'К сожалению, в настоящее время'))
+            #     write_logs_out('No seller')
+            #     print('refresh 1')
+            #     driver.refresh()
+            # except TimeoutException:
+            #     write_logs_out(traceback.format_exc())
+            #     print('refresh 2')
+            #     driver.refresh()
+            #     raise Exception('MANUAL EXCEPTION 1')
     was_exception = False
     rows_scanned = False
     while not rows_scanned:
@@ -273,29 +276,23 @@ def get_price_rows():
         for j, row in enumerate(select_by_tag('tr')):
             try:
                 if write_detailed_logs:
-                    write_logs_out(f'Row no {j}')
+                    write_logs_out('DEBUG', f'Row no {j}')
                 rr = row.get_attribute('innerText')
                 if write_detailed_logs:
-                    write_logs_out(f'Row no {j}: innerText={rr}')
+                    write_logs_out('DEBUG', f'Row no {j}: innerText={rr}')
                 inner_html = row.get_attribute('innerHTML')
                 if write_detailed_logs:
-                    write_logs_out(f'Row no {j}: innerHTML={inner_html}')
+                    write_logs_out('DEBUG', f'Row no {j}: innerHTML={inner_html}')
                 if rr is None or inner_html is None:
                     raise StaleElementReferenceException('rr or inner_html is None')
                 # print(rr)
             except StaleElementReferenceException:
                 was_exception = True
-                write_logs_out(traceback.format_exc())
-                # print(row.)
-                # rows = list(select_by_tag('tr'))
-                # if rows_len != len(potential_rows):
-                #     raise Exception(f'new list is different {rows_len} {len(potential_rows)}')
-                # rows = potential_rows
-                # break
+                write_logs_out('DEBUG', traceback.format_exc())
                 break
             if 'Выбрать' not in rr:
                 if write_detailed_logs:
-                    write_logs_out(f'Row no {j}: Выбрать not in rr')
+                    write_logs_out('DEBUG', f'Row no {j}: Выбрать not in rr')
                 continue
 
             name = rr.split('\n')[0]
@@ -314,11 +311,11 @@ def get_price_rows():
         # time.sleep(0.5)
         if not was_exception:
             if write_detailed_logs:
-                write_logs_out(f'NO EXCEPTION FOR PAGE')
+                write_logs_out('DEBUG', f'NO EXCEPTION FOR PAGE')
             rows_scanned = True
         else:
             if write_detailed_logs:
-                write_logs_out('EXCEPTION FOR PAGE')
+                write_logs_out('DEBUG', 'EXCEPTION FOR PAGE')
     pagination_exists = len(list(select_by_class('pagination__el'))) > 0
     if pagination_exists:
         finished = False
@@ -337,7 +334,7 @@ def get_price_rows():
                         elif page_button.get_attribute('class') == 'pagination__el _disabled':
                             finished = True
             except Exception:
-                write_logs_out(traceback.format_exc())
+                write_logs_out('DEBUG', traceback.format_exc())
                 # print('e2', e)
                 pass
         if finished:
@@ -554,8 +551,10 @@ def index_rows():
         if not finished:
             while not list(select_by_attr('img', 'aria-label', 'Next page')):
                 time.sleep(0.1)
+            next_button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, f"//img[@aria-label='Next page']")))
+            next_button.click()
             # wait_till_load_by_text(' из ')
-            click_mouse()
+            # click_mouse()
             wait_till_load_by_text(' из ')
 
     print(links)
@@ -564,12 +563,13 @@ def index_rows():
 
 def prepare_orders():
     orders = psql.read_sql(f'SELECT * from order_table_{customer_id}', db)
-    orders_fact = [l[:-1] for l in index_rows()]
+    orders = orders.sample(frac=1)
+    # orders_fact = [l[:-1] for l in index_rows()]
     # TODO: change orders_face
     # with open('order_fact.pk', 'wb') as file:
     #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
-    # with open('order_fact.pk', 'rb') as file:
-    #     orders_fact = pickle.load(file)
+    with open('order_fact.pk', 'rb') as file:
+        orders_fact = pickle.load(file)
 
     orders = orders[orders.ORDER_LINK.isin(orders_fact)]
 
@@ -605,7 +605,7 @@ def check_tab_timeout():
     def check_tab_timeout_helper():
         while True:
             if any(time.time() - tab_status.start_t > timeout_tab):
-                write_logs_out('Timeout at tab')
+                write_logs_out('ERROR', 'Timeout at tab')
                 exit_handler()
                 os._exit(os.EX_OK)
             time.sleep(30)
@@ -617,6 +617,7 @@ if __name__ == '__main__':
     start_time = 0
     cx_Oracle.init_oracle_client(config_dir=config.wallet_dir,
                                  lib_dir=config.db_lib_dir)
+    check_tab_timeout()
 
     while True:
         init_vars()
@@ -626,7 +627,6 @@ if __name__ == '__main__':
         open_new_tabs()
 
         start_time = time.time()
-        check_tab_timeout()
         init_orders_table()
         mini_orders_all = prepare_orders()
         if not city_inited:
@@ -652,24 +652,26 @@ if __name__ == '__main__':
                             if page_is_loaded():
                                 change_tab_status(i, status='success')
                         if tab_status.loc[i, 'status'] == 'success':
-                            change_tab_status(i, action='pricep_1', status='pending', start_t=True)
+                            change_tab_status(i, action='pricep_1', status='pending')
                             next_pressed, prices = get_price_rows()
-                            if len(prices) == 0:
-                                next_pressed, prices = get_price_rows()
                             if next_pressed:
                                 action = tab_status.loc[i]['action']
                                 action_no = int(action.split('_')[1])
-                                change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending', start_t=True,
+                                change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending',
                                                   strings=json.dumps(prices))
                             else:
-                                if len(prices) > 0:
+                                if prices:
                                     write_prices(prices)
                                     # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
-                                    change_tab_status(i, action=f'process_order', status='pending',
-                                                      start_t=True, strings=json.dumps(prices))
+                                    change_tab_status(i, action='process_order', status='pending',
+                                                      strings=json.dumps(prices))
                                 else:
-                                    # change_tab_status(i, action=f'None', idx=tab_status.loc[i]['idx'] + 1)
-                                    raise Exception('No any seller')
+                                    driver.refresh()
+                                    change_tab_status(i, action='reload', status='pending')
+                                    # raise Exception('No any seller')
+                    elif tab_status.loc[i, 'action'] == 'reload':
+                        if page_is_loaded():
+                            change_tab_status(i, action='open_order', status='success')
                     elif 'pricep' in tab_status.loc[i, 'action']:
                         next_pressed, prices = get_price_rows()
                         # if len(prices) == 0:
@@ -677,7 +679,7 @@ if __name__ == '__main__':
                         if next_pressed:
                             action = tab_status.loc[i]['action']
                             action_no = int(action.split('_')[1])
-                            change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending', start_t=True,
+                            change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending',
                                               strings=tab_status.loc[i]['strings'] + '|+|' + json.dumps(prices))
                         else:
                             strings = tab_status.loc[i]['strings']
@@ -690,12 +692,12 @@ if __name__ == '__main__':
                             if len(prices) == 0:
                                 raise Exception('No seller on last page')
                             # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
-                            change_tab_status(i, action=f'process_order', status='pending', start_t=True,
+                            change_tab_status(i, action=f'process_order', status='pending',
                                               strings=json.dumps(res))
                     elif tab_status.loc[i, 'action'] == 'process_order':
                         if tab_status.loc[i, 'status'] == 'pending':
                             prices = json.loads(tab_status.loc[i]['strings'])
-                            print(prices)
+                            write_logs_out('DEBUG', json.dumps(prices), write_db=False)
                             im_seller = any([my_id in p for p in prices])
                             if im_seller:
                                 my_rank = [i for i, k in enumerate(prices) if my_id in k][0]
@@ -723,10 +725,17 @@ if __name__ == '__main__':
                                 else:
                                     desired_price = top2_price - price_step
                                 desired_price = max(min_price, desired_price)
+                                write_logs_out('DEBUG',
+                                               f'Curr rank {my_rank}\n'
+                                               f'Curr price {my_curr_price}\n'
+                                               f'Min price {min_price}\n'
+                                               f'Desired price {desired_price}\n'
+                                               f'Top1 price {top1_price}\n'
+                                               f'Top2 price {top2_price}')
                                 if desired_price == min_price:
-                                    write_logs_out('Desired price = min price')
+                                    write_logs_out('DEBUG', 'Desired price = min price')
                                 if desired_price == my_curr_price:
-                                    write_logs_out('Already desired price')
+                                    write_logs_out('DEBUG', 'Already desired price')
                                     change_tab_status(i, action='None', idx=tab_status.loc[i]['idx'] + 1)
                                 else:
                                     link = f"https://kaspi.kz/merchantcabinet/#/offers/edit/{curr_order_link.split('-')[-1]}_{my_id}"
@@ -754,7 +763,7 @@ if __name__ == '__main__':
                                 if success1:
                                     change_tab_status(i, status='success')
                             except TimeoutException:
-                                write_logs_out('ZAKAZY NOT LOADED')
+                                write_logs_out('ERROR', 'ZAKAZY NOT LOADED at process_order2')
                         if tab_status.loc[i]['status'] == 'success':
                             link = tab_status.loc[i]['strings'].split('|+|')[0]
                             driver.get(link)
@@ -765,8 +774,11 @@ if __name__ == '__main__':
                                 got_page = wait_till_load_by_text('Редактирование товара', t=0.5)
                                 if got_page:
                                     change_tab_status(i, status='success')
+                                    write_logs_out('DEBUG', 'Редактирование товара loaded')
+                                else:
+                                    write_logs_out('ERROR', 'UNKNOWN ERROR at process_order3')
                             except TimeoutException:
-                                write_logs_out('REDAKTIROVANIE TOVARA NOT LOADED')
+                                write_logs_out('ERROR', 'REDAKTIROVANIE TOVARA NOT LOADED at process_order3')
                         if tab_status.loc[i]['status'] == 'success':
                             was_exception = False
                             try:
@@ -788,13 +800,14 @@ if __name__ == '__main__':
                                 cursor.execute(f"""UPDATE CURRENT_PRICE_STATUS_{customer_id} 
                                                SET NEXT_PRICE = :1, LAST_UPDATE_AT = systimestamp
                                                WHERE ORDER_LINK = :2""", (int(new_price), curr_order_link))
-                                write_logs_out(f'Updating price to {new_price}')
+                                write_logs_out('DEBUG', f'Updating price to {new_price}')
                                 db.commit()
                                 cursor.close()
                                 change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
                             except ElementClickInterceptedException:
                                 was_exception = True
-                                write_logs_out(traceback.format_exc())
+                                new_price = tab_status.loc[i]['strings'].split('|+|')[1]
+                                write_logs_out('ERROR', f'Fail while updating price to {new_price}')
                             if was_exception:
                                 try:
                                     curtain = WebDriverWait(driver, 1).until(EC.visibility_of_element_located(
@@ -802,16 +815,17 @@ if __name__ == '__main__':
                                     button = WebDriverWait(driver, 1).until(
                                         EC.element_to_be_clickable((By.CLASS_NAME, 'gwt-Button button')))
                                     button.click()
+                                    write_logs_out('DEBUG', 'Curtain clicked')
                                 except TimeoutException:
-                                    write_logs_out('NO SERVICE NEDOSTUPEN_BUTTON BUT PAGE IS STALE')
-                                    write_logs_out(traceback.format_exc())
+                                    write_logs_out('ERROR', 'Fail to click curtain but page is stale')
+                                    write_logs_out('ERROR', traceback.format_exc())
                                     raise TimeoutException()
                     else:
                         # print(tab_status.loc[i, 'action'])
                         raise NotImplementedError(f"Not implemented action {tab_status.loc[i, 'action']}")
                 except Exception as e:
                     change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
-                    write_logs_out(traceback.format_exc())
+                    write_logs_out('FATAL', traceback.format_exc())
         exit_handler()
 
 # selenium.common.exceptions.ElementClickInterceptedException: Message: Element <label class="form__radio-title"> is not clickable at point (511,611) because another element <div class="ks-gwt-dialog _small g-ta-c"> obscures it

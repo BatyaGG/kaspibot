@@ -23,7 +23,8 @@ CREATE TABLE current_price_status_0
     curr_price NUMBER(9,0),
     next_price NUMBER(9,0),
     min_price NUMBER(9,0) NOT NULL,
-    last_update_at timestamp with time zone,
+    scanned_at timestamp with time zone,
+    updated_at timestamp with time zone
     PRIMARY KEY (order_link)
 );
 
@@ -31,6 +32,7 @@ CREATE TABLE logs_0
 (
     created_at timestamp DEFAULT systimestamp,
     order_link VARCHAR2(500) NOT NULL,
+    log_level VARCHAR2(50) NOT NULL,
     log_text VARCHAR2(5000) NOT NULL
 );
 
