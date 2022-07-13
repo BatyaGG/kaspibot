@@ -564,12 +564,12 @@ def index_rows():
 def prepare_orders():
     orders = psql.read_sql(f'SELECT * from order_table_{customer_id}', db)
     orders = orders.sample(frac=1)
-    # orders_fact = [l[:-1] for l in index_rows()]
+    orders_fact = [l[:-1] for l in index_rows()]
     # TODO: change orders_face
-    # with open('order_fact.pk', 'wb') as file:
-    #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
-    with open('order_fact.pk', 'rb') as file:
-        orders_fact = pickle.load(file)
+    with open('order_fact.pk', 'wb') as file:
+        pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
+    # with open('order_fact.pk', 'rb') as file:
+    #     orders_fact = pickle.load(file)
 
     orders = orders[orders.ORDER_LINK.isin(orders_fact)]
 
@@ -798,7 +798,7 @@ if __name__ == '__main__':
                                 press_enter()
                                 cursor = db.cursor()
                                 cursor.execute(f"""UPDATE CURRENT_PRICE_STATUS_{customer_id} 
-                                               SET NEXT_PRICE = :1, LAST_UPDATE_AT = systimestamp
+                                               SET NEXT_PRICE = :1, updated_at = systimestamp
                                                WHERE ORDER_LINK = :2""", (int(new_price), curr_order_link))
                                 write_logs_out('DEBUG', f'Updating price to {new_price}')
                                 db.commit()

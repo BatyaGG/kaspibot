@@ -23,7 +23,7 @@ CREATE TABLE current_price_status_0
     curr_price NUMBER(9,0),
     next_price NUMBER(9,0),
     min_price NUMBER(9,0) NOT NULL,
-    scanned_at timestamp with time zone,
+    scanned_at timestamp default systimestamp,
     updated_at timestamp with time zone
     PRIMARY KEY (order_link)
 );
