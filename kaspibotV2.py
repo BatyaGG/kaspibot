@@ -687,7 +687,13 @@ if __name__ == '__main__':
                             strings = [json.loads(s) for s in strings]
                             res = {}
                             for p in strings + [prices]:
-                                res.update(p)
+                                try:
+                                    res.update(p)
+                                except Exception as e:
+                                    write_logs_out('SPECIAL', f'p: {p}\n'
+                                                              f'strings: {strings}\n'
+                                                              f'prices: {prices}')
+                                    raise e
                             write_prices(res)
                             if len(prices) == 0:
                                 raise Exception('No seller on last page')
