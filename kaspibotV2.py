@@ -574,11 +574,11 @@ def prepare_orders():
     orders = orders.sample(frac=1)
 
     # TODO: change orders_face
-    # orders_fact = [l[:-1] for l in index_rows()]
+    orders_fact = [l[:-1] for l in index_rows()]
     # with open('order_fact.pk', 'wb') as file:
     #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
-    with open('order_fact.pk', 'rb') as file:
-        orders_fact = pickle.load(file)
+    # with open('order_fact.pk', 'rb') as file:
+    #     orders_fact = pickle.load(file)
 
     orders = orders[orders.ORDER_LINK.isin(orders_fact)]
 
