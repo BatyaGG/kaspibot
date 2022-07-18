@@ -33,7 +33,7 @@ sys.path.append('Customer_data')
 from Customer_data.Customers import customers
 
 customer_id = 0
-num_tabs = 2
+num_tabs = 10
 timeout_tab = 5 * 60
 timeout_restart = 60 * 60
 price_step = 2
