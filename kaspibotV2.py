@@ -33,7 +33,7 @@ sys.path.append('Customer_data')
 from Customer_data.Customers import customers
 
 customer_id = 0
-num_tabs = 10
+num_tabs = 2
 timeout_tab = 5 * 60
 timeout_restart = 60 * 60
 price_step = 2
@@ -96,7 +96,7 @@ def create_driver():
     fp.set_preference("browser.tabs.remote.autostart.1", False)
     fp.set_preference("browser.tabs.remote.autostart.2", False)
     options = Options()
-    options.headless = False
+    options.headless = True
     options.page_load_strategy = 'none'
     driver = webdriver.Firefox(options=options,
                                firefox_profile=fp)
@@ -144,7 +144,8 @@ def login():
     #     click_mouse()
 
 def init_city():
-    driver.get(mini_orders_all[0].iloc[0].ORDER_LINK)
+    # driver.get(mini_orders_all[0].iloc[0].ORDER_LINK)
+    driver.get('https://kaspi.kz/shop/p/almacom-ach-18as-belyi-montazhnyi-komplekt-101215645/?c=750000000')
     city_el = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, f"//a[@data-city-id=750000000]")))
     if len(elem) > 0:
         elem.pop()
@@ -239,7 +240,7 @@ def page_is_loaded():
 
 
 def init_orders_table():
-    os.system(f"python order_list_to_db.py {customer_id} link price")
+    os.system(f"python3 order_list_to_db.py {customer_id} link price")
     time.sleep(5)
 
 
@@ -342,6 +343,13 @@ def get_price_rows():
         if next_pressed:
             return True, prices
     return False, prices
+
+
+def refresh_at_page(page_num):
+    driver.refresh()
+    for page_button in select_by_class('pagination__el'):
+        if page_button.get_attribute('innerText') == page_num:
+            click_mouse()
 
 
 # def get_price_rows():
@@ -564,12 +572,13 @@ def index_rows():
 def prepare_orders():
     orders = psql.read_sql(f'SELECT * from order_table_{customer_id}', db)
     orders = orders.sample(frac=1)
-    orders_fact = [l[:-1] for l in index_rows()]
+
     # TODO: change orders_face
-    with open('order_fact.pk', 'wb') as file:
-        pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
-    # with open('order_fact.pk', 'rb') as file:
-    #     orders_fact = pickle.load(file)
+    # orders_fact = [l[:-1] for l in index_rows()]
+    # with open('order_fact.pk', 'wb') as file:
+    #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
+    with open('order_fact.pk', 'rb') as file:
+        orders_fact = pickle.load(file)
 
     orders = orders[orders.ORDER_LINK.isin(orders_fact)]
 
@@ -613,6 +622,17 @@ def check_tab_timeout():
     th.start()
 
 
+# if __name__ == '__main__':
+#     create_driver()
+#     init_city()
+#     time.sleep(10)
+#     for page_button in select_by_class('pagination__el'):
+#         if page_button.get_attribute('innerText') == '2':
+#             click_mouse()
+#
+# exit()
+
+# TODO: think about page_is_loaded: consider both cases
 if __name__ == '__main__':
     start_time = 0
     cx_Oracle.init_oracle_client(config_dir=config.wallet_dir,
@@ -630,7 +650,7 @@ if __name__ == '__main__':
         init_orders_table()
         mini_orders_all = prepare_orders()
         if not city_inited:
-            init_city()
+            # init_city()
             city_inited = True
         while time.time() - start_time < timeout_restart:
             print(tab_status[['idx', 'action', 'status']])
@@ -655,10 +675,13 @@ if __name__ == '__main__':
                             change_tab_status(i, action='pricep_1', status='pending')
                             next_pressed, prices = get_price_rows()
                             if next_pressed:
-                                action = tab_status.loc[i]['action']
-                                action_no = int(action.split('_')[1])
-                                change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending',
-                                                  strings=json.dumps(prices))
+                                if prices:
+                                    action = tab_status.loc[i]['action']
+                                    action_no = int(action.split('_')[1])
+                                    change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending',
+                                                      strings=json.dumps(prices))
+                                else:
+                                    raise Exception('Next pressed, but prices is None')
                             else:
                                 if prices:
                                     write_prices(prices)
@@ -671,35 +694,51 @@ if __name__ == '__main__':
                                     # raise Exception('No any seller')
                     elif tab_status.loc[i, 'action'] == 'reload':
                         if page_is_loaded():
-                            change_tab_status(i, action='open_order', status='success')
+                            change_tab_status(i, action='open_order', status='pending')
                     elif 'pricep' in tab_status.loc[i, 'action']:
                         next_pressed, prices = get_price_rows()
                         # if len(prices) == 0:
                         #     next_pressed, prices = get_price_rows()
                         if next_pressed:
-                            action = tab_status.loc[i]['action']
-                            action_no = int(action.split('_')[1])
-                            change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending',
-                                              strings=tab_status.loc[i]['strings'] + '|+|' + json.dumps(prices))
+                            if prices:
+                                action = tab_status.loc[i]['action']
+                                action_no = int(action.split('_')[1])
+                                change_tab_status(i, action=f'pricep_{action_no + 1}', status='pending',
+                                                  strings=tab_status.loc[i]['strings'] + '|+|' + json.dumps(prices))
+                            else:
+                                raise Exception('Next pressed, but prices is None')
                         else:
-                            strings = tab_status.loc[i]['strings']
-                            strings = strings.split('|+|')
-                            strings = [json.loads(s) for s in strings]
-                            res = {}
-                            for p in strings + [prices]:
-                                try:
+                            if prices:
+                                strings = tab_status.loc[i]['strings']
+                                strings = strings.split('|+|')
+                                strings = [json.loads(s) for s in strings]
+                                res = {}
+                                for p in strings + [prices]:
+                                    # try:
                                     res.update(p)
-                                except Exception as e:
-                                    write_logs_out('SPECIAL', f'p: {p}\n'
-                                                              f'strings: {strings}\n'
-                                                              f'prices: {prices}')
-                                    raise e
-                            write_prices(res)
-                            if len(prices) == 0:
-                                raise Exception('No seller on last page')
-                            # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
-                            change_tab_status(i, action=f'process_order', status='pending',
-                                              strings=json.dumps(res))
+                                    # except Exception as e:
+                                    #     write_logs_out('SPECIAL', f'p: {p}\n'
+                                    #                               f'strings: {strings}\n'
+                                    #                               f'prices: {prices}')
+                                    #     raise e
+                                write_prices(res)
+                                # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
+                                change_tab_status(i, action=f'process_order', status='pending',
+                                                  strings=json.dumps(res))
+                            else:
+                                action = tab_status.loc[i]['action']
+                                action_no = action.split('_')[1]
+                                # refresh_at_page(action_no)
+                                driver.refresh()
+                                change_tab_status(i, action=f'reloadp_{action_no}', status='pending')
+                    elif 'reloadp' in tab_status.loc[i, 'action']:
+                        action = tab_status.loc[i]['action']
+                        action_no = action.split('_')[1]
+                        if page_is_loaded():
+                            for page_button in select_by_class('pagination__el'):
+                                if page_button.get_attribute('innerText') == action_no:
+                                    click_mouse()
+                            change_tab_status(i, action=f'pricep_{action_no}', status='pending')
                     elif tab_status.loc[i, 'action'] == 'process_order':
                         if tab_status.loc[i, 'status'] == 'pending':
                             prices = json.loads(tab_status.loc[i]['strings'])
@@ -832,6 +871,7 @@ if __name__ == '__main__':
                 except Exception as e:
                     change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
                     write_logs_out('FATAL', traceback.format_exc())
+                time.sleep(1)
         exit_handler()
 
 # selenium.common.exceptions.ElementClickInterceptedException: Message: Element <label class="form__radio-title"> is not clickable at point (511,611) because another element <div class="ks-gwt-dialog _small g-ta-c"> obscures it
