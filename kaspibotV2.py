@@ -650,7 +650,7 @@ if __name__ == '__main__':
         init_orders_table()
         mini_orders_all = prepare_orders()
         if not city_inited:
-            # init_city()
+            init_city()
             city_inited = True
         while time.time() - start_time < timeout_restart:
             print(tab_status[['idx', 'action', 'status']])
