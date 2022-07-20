@@ -76,13 +76,13 @@ def exit_handler():
         print('closed db')
     except:
         print('db already closed')
-    # try:
-    #     driver.quit()
-    #     print('closed driver')
-    # except:
-    #     print('driver already closed')
-    # os.system('pkill -9 firefox')
-    # print('called pkill')
+    try:
+        driver.quit()
+        print('closed driver')
+    except:
+        print('driver already closed')
+    os.system('pkill -9 firefox')
+    print('called pkill')
 atexit.register(exit_handler)
 
 
