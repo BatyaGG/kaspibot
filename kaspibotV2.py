@@ -96,7 +96,7 @@ def create_driver():
     fp.set_preference("browser.tabs.remote.autostart.1", False)
     fp.set_preference("browser.tabs.remote.autostart.2", False)
     options = Options()
-    options.headless = True
+    options.headless = False
     options.page_load_strategy = 'none'
     driver = webdriver.Firefox(options=options,
                                firefox_profile=fp)
@@ -506,22 +506,29 @@ def index_rows():
     success_open_offers = False
     while not success_open_offers:
         driver.get("https://kaspi.kz/merchantcabinet/#/offers")
-        success1 = wait_till_load_by_text('Управление товарами')
-        if not success1:
-            success2 = wait_till_load_by_text('Заказы')
-            if success2:
-                try:
-                    element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.XPATH, f"//a[@class='main-nav__el-link'][@href='#/offers']")))
-                    actions = ActionChains(driver)
-                    actions.move_to_element(element)
-                    actions.perform()
-                    element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.XPATH, f"//a[@class='main-nav__sub-el-link'][@href='#/offers']")))
-                    element.click()
-                    success_open_offers = True
-                except:
-                    pass
-        else:
-            success_open_offers = True
+        write_logs_out('DEBUG', 'Opened zakazy')
+        # success1 = wait_till_load_by_text('Управление товарами')
+        # write_logs_out('DEBUG', f'Tried upravlenie tovarami {success1}')
+        # success1 = False
+        # if not success1:
+        success2 = wait_till_load_by_text('Заказы')
+        write_logs_out('DEBUG', f'Tried zakazy {success2}' )
+        if success2:
+            try:
+                element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.XPATH, f"//a[@class='main-nav__el-link'][@href='#/offers']")))
+                write_logs_out('DEBUG', f'Found tovary button')
+                actions = ActionChains(driver)
+                actions.move_to_element(element)
+                actions.perform()
+                element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.XPATH, f"//a[@class='main-nav__sub-el-link'][@href='#/offers']")))
+                write_logs_out('DEBUG', f'Found button upravlenie tovarami {success2}')
+                element.click()
+                success_open_offers = True
+            except:
+                write_logs_out('ERROR', traceback.format_exc())
+                pass
+        # else:
+        #     success_open_offers = True
     try:
         # button = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'gwt-Button button')))
         curtain = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.CLASS_NAME, 'ks-gwt-dialog _small g-ta-c')))
