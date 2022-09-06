@@ -13,3 +13,43 @@ sh kaspibot_master.sh 1 https://kaspi.kz/shop/info/merchant/11093021/address-tab
 #  kill $(ps -s $$ -o pid=)
 #  pkill -P $$
 otverjenniy
+
+
+
+CREATE TABLE _0_order_table
+(
+    order_link character varying(200) NOT NULL,
+    min_price integer,
+    cls smallint,
+    active boolean,
+    PRIMARY KEY (order_link)
+);
+
+CREATE TABLE _0_scan_event
+(
+	created_at timestamp with time zone DEFAULT now(),
+	order_link character varying(200) NOT NULL,
+	sellers_links text,
+	sellers_names text,
+	seller_prices text
+);
+
+CREATE TABLE _0_current_price_status
+(
+	order_link character varying(200) NOT NULL,
+	curr_rank smallint,
+	curr_price integer,
+	next_price integer,
+	min_price integer NOT NULL,
+	scanned_at timestamp with time zone DEFAULT now(),
+	updated_at timestamp with time zone,
+	primary key (order_link)
+);
+
+CREATE TABLE _0_logs
+(
+	created_at timestamp with time zone DEFAULT now(),
+	order_link character varying(200) NOT NULL,
+	log_level character varying(50) NOT NULL,
+	log_text character varying(5000) NOT NULL,
+);

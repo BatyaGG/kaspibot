@@ -1,6 +1,5 @@
 import pickle
 import re
-import signal
 import time
 import atexit
 import traceback
@@ -8,17 +7,18 @@ import warnings
 import sys
 import os
 import json
+from collections import defaultdict
 from threading import Thread
 
 import pandas as pd
-from selenium.webdriver import ActionChains
+import psycopg2 as pg
+from selenium.webdriver import ActionChains, DesiredCapabilities
 
 import config
 warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas.io.sql as psql
-import cx_Oracle
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -28,14 +28,21 @@ from selenium.common.exceptions import TimeoutException, ElementClickIntercepted
 from selenium.webdriver.firefox.options import Options
 from selenium.common.exceptions import StaleElementReferenceException
 
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_colwidth', None)
+
+print(os.path.abspath(os.getcwd()))
 
 sys.path.append('Customer_data')
 from Customer_data.Customers import customers
 
-customer_id = 0
+customer_id = config.merchant_id
 num_tabs = 10
 timeout_tab = 5 * 60
 timeout_restart = 60 * 60
+update_fact_t = 60
 price_step = 2
 
 nickname = customers[customer_id]['email']
@@ -88,23 +95,29 @@ atexit.register(exit_handler)
 
 def create_driver():
     global driver
-    fp = webdriver.FirefoxProfile()
-    fp.set_preference("dom.popup_maximum", 0)
-    fp.set_preference("browser.link.open_newwindow", 0)
-    fp.set_preference("browser.link.open_newwindow.restriction", 0)
-    fp.set_preference("browser.tabs.remote.autostart", False)
-    fp.set_preference("browser.tabs.remote.autostart.1", False)
-    fp.set_preference("browser.tabs.remote.autostart.2", False)
+    # fp = webdriver.FirefoxProfile()
+    # fp.set_preference("dom.popup_maximum", 0)
+    # fp.set_preference("browser.link.open_newwindow", 0)
+    # fp.set_preference("browser.link.open_newwindow.restriction", 0)
+    # fp.set_preference("browser.tabs.remote.autostart", False)
+    # fp.set_preference("browser.tabs.remote.autostart.1", False)
+    # fp.set_preference("browser.tabs.remote.autostart.2", False)
+    caps = DesiredCapabilities().FIREFOX
+    # caps["pageLoadStrategy"] = 'none'
     options = Options()
-    options.headless = False
+    options.headless = True
     options.page_load_strategy = 'none'
     driver = webdriver.Firefox(options=options,
-                               firefox_profile=fp)
+                               # firefox_profile=fp,
+                               # capabilities=caps,
+                               # executable_path='/main/drivers/geckodriver'
+                               )
 
 
 def open_new_tabs():
     for i in range(num_tabs - 1):
         driver.switch_to.new_window('TAB')
+    write_logs_out('DEBUG', f'Opened new {num_tabs} tabs')
 
 
 def login():
@@ -225,23 +238,27 @@ def write_logs_out(lvl, text, write_db=True):
     print()
     if write_db:
         cursor = db.cursor()
-        cursor.execute(f"INSERT INTO LOGS_{customer_id} (ORDER_LINK, LOG_LEVEL, LOG_TEXT) "
-                       "VALUES (:1, :2, :3) ", (curr_order_link, lvl, text))
+        cursor.execute(f"INSERT INTO _{customer_id}_LOGS (ORDER_LINK, LOG_LEVEL, LOG_TEXT) "
+                       "VALUES (%s, %s, %s) ", (curr_order_link, lvl, text))
         db.commit()
         cursor.close()
 
 
 def page_is_loaded():
     try:
-        WebDriverWait(driver, 0.2).until(EC.element_to_be_clickable((By.CLASS_NAME, 'topbar__logo')))
+        WebDriverWait(driver, 0.2).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'h2')))
+        # WebDriverWait(driver, 0.2).until(EC.element_to_be_clickable((By.CLASS_NAME, 'topbar__logo')))
         return True
     except:
         return False
 
 
-def init_orders_table():
-    os.system(f"python3 order_list_to_db.py {customer_id} link price")
-    time.sleep(5)
+# def init_orders_table():
+#     try:
+#         create_tables_and_load(customer_id, db)
+#         return True
+#     except:
+#         return False
 
 
 def get_price_rows():
@@ -493,8 +510,8 @@ def write_prices(prices):
 
     cursor = db.cursor()
     cursor.execute(
-        f"INSERT INTO scan_event_{customer_id} (order_link, sellers_links, sellers_names, sellers_prices) "
-        "VALUES (:1, :2, :3, :4)", (str(mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ORDER_LINK),
+        f"INSERT INTO _{customer_id}_scan_event (order_link, sellers_links, sellers_names, sellers_prices) "
+        "VALUES (%s, %s, %s, %s)", (str(mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].order_link),
                                     ','.join(prices_df.seller_link.values),
                                     ','.join(prices_df.seller_name.values),
                                     ','.join(prices_df.seller_price.astype('str').values)))
@@ -503,12 +520,12 @@ def write_prices(prices):
 
 
 def index_rows():
+    write_logs_out('DEBUG', 'Indexing orders')
     success_open_offers = False
     while not success_open_offers:
         driver.get("https://kaspi.kz/merchantcabinet/#/offers")
         write_logs_out('DEBUG', 'Opened zakazy')
-        # success1 = wait_till_load_by_text('Управление товарами')
-        # write_logs_out('DEBUG', f'Tried upravlenie tovarami {success1}')
+
         # success1 = False
         # if not success1:
         success2 = wait_till_load_by_text('Заказы')
@@ -544,7 +561,9 @@ def index_rows():
             rows = list(select_by_class('offer-managment__product-cell-link'))
             time.sleep(1)
 
-        links.update([el.get_attribute('href') for el in rows])
+        links.update([el.get_attribute('href')[:-1] for el in rows])
+        write_logs_out('DEBUG', f'{len(links)}', write_db=False)
+        write_logs_out('DEBUG', json.dumps(list(links)), write_db=False)
         # for el in rows:
             # print(thread_name, el)
             # el.get_attribute('href')
@@ -564,38 +583,105 @@ def index_rows():
                     # print(thread_name, 'after_failure')
                 # print(thread_name, '---')
         if not finished:
-            while not list(select_by_attr('img', 'aria-label', 'Next page')):
-                time.sleep(0.1)
-            next_button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, f"//img[@aria-label='Next page']")))
-            next_button.click()
-            # wait_till_load_by_text(' из ')
-            # click_mouse()
-            wait_till_load_by_text(' из ')
-
-    print(links)
+            if len(links) % 10 == 0:
+                write_logs_out('DEBUG', 'links num is divisible by 10 -> pressing next')
+                while not list(select_by_attr('img', 'aria-label', 'Next page')):
+                    time.sleep(0.1)
+                next_button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, f"//img[@aria-label='Next page']")))
+                next_button.click()
+                # wait_till_load_by_text(' из ')
+                # click_mouse()
+                wait_till_load_by_text(' из ')
+            else:
+                write_logs_out('DEBUG', 'links num NOT divisible by 10 -> try page again')
+    write_logs_out('DEBUG', f'Len of links is {len(links)}')
     return list(links)
 
 
+def update_fact():
+    write_logs_out('DEBUG', 'update_fact called')
+    orders_fact = index_rows()
+    # orders_fact = [l[:-1] for l in rows]
+    # orders_fact = list(set(orders_fact))
+    # orders_fact = [of for of in orders_fact if of!='']
+    print(orders_fact)
+    cursor = db.cursor()
+    # cursor.execute(f'truncate table _{customer_id}_order_fact')
+    cursor.execute(f'insert into _{customer_id}_order_fact (order_count, order_links) values (%s, %s)', (len(orders_fact), ','.join(orders_fact)))
+    db.commit()
+    cursor.close()
+    write_logs_out('DEBUG', f'update_fact len of fact {len(orders_fact)}')
+    return orders_fact
+
+
 def prepare_orders():
-    orders = psql.read_sql(f'SELECT * from order_table_{customer_id}', db)
+    orders = psql.read_sql(f'SELECT * from _{customer_id}_order_table', db)
     orders = orders.sample(frac=1)
 
+    write_logs_out('DEBUG', f'Total orders len: {len(orders)}')
+
     # TODO: change orders_face
-    orders_fact = [l[:-1] for l in index_rows()]
+
+    orders_fact = psql.read_sql(f'select Extract(epoch from (now() - created_at)/60) as minutes_ago, order_links '
+                                f'from _{customer_id}_order_fact order by created_at desc limit 1', db)
+    # print(orders_fact)
+    assert len(orders_fact) < 2
+    reserve_tab = False
+    if len(orders_fact) == 0:
+        write_logs_out('DEBUG', 'Empty order_fact table\n'
+                                'Index orders')
+        orders_fact = update_fact()
+    elif orders_fact.iloc[0].minutes_ago > update_fact_t:
+        write_logs_out('DEBUG', f'order_fact is old: {orders_fact.iloc[0].minutes_ago} minutes ago')
+        change_tab_status(0, action='index_orders', start_t=True)
+        reserve_tab = True
+        orders_fact = orders_fact.iloc[0].order_links.split(',')
+        write_logs_out('DEBUG', 'Loaded orders fact from db')
+    else:
+        write_logs_out('DEBUG', f'order_fact is OK: {orders_fact.iloc[0].minutes_ago} minutes ago')
+        orders_fact = orders_fact.iloc[0].order_links.split(',')
+        write_logs_out('DEBUG', 'Loaded orders fact from db')
     # with open('order_fact.pk', 'wb') as file:
     #     pickle.dump(orders_fact, file, protocol=pickle.HIGHEST_PROTOCOL)
     # with open('order_fact.pk', 'rb') as file:
     #     orders_fact = pickle.load(file)
+    # print(orders_fact)
+    # print(orders.order_link.iloc[0])
+    isin_orders = set(orders_fact) & set(orders.order_link)
+    not_isin = set(orders_fact) - set(orders.order_link)
+    print(len(isin_orders))
+    print(len(not_isin))
+    print('isin')
+    for n in isin_orders:
+        print(n)
+    print('\n\n\n')
+    print('notisin')
+    for n in not_isin:
+        print(n)
+    # print()
+    # print('not isin')
+    # print(orders[~orders.order_link.isin(orders_fact)])
+    orders = orders[orders.order_link.isin(orders_fact)]
 
-    orders = orders[orders.ORDER_LINK.isin(orders_fact)]
+    write_logs_out('INFO', f'Orders fact count: {len(orders_fact)}\n'
+                           f'Orders included in input: {orders.shape[0]}')
 
-    print('new orders shape:', orders.shape)
+    orders = orders[orders.active==True]
+    write_logs_out('INFO', f'Active orders count: {orders.shape[0]}')
 
-    idx = np.linspace(0, orders.shape[0], num_tabs + 1)
+    last_scans = pd.read_sql(f'select * from _{customer_id}_scan_event order by created_at desc limit {orders.shape[0] * 2}', db)
+    last_scans['priority'] = list(range(1, len(last_scans) + 1))
+    last_scans.drop_duplicates('order_link', keep='first', inplace=True)
+    idx = np.linspace(0, orders.shape[0], num_tabs + 1 - reserve_tab)
     # tab_status = [[0, -1, 0, 0]] * num_tabs  # order_n, curr_phase, next_phase, time_elps
     mini_orders_all = []
-    for i in range(len(driver.window_handles)):
-        mini_orders_all.append(orders.iloc[int(idx[i]):int(idx[i + 1])])
+    for i in range(len(driver.window_handles) - reserve_tab):
+        mini_order = orders.iloc[int(idx[i]):int(idx[i + 1])]
+        mini_order = mini_order.merge(last_scans, on='order_link', how='left')
+        mini_order['priority'].fillna(float('inf'), inplace=True)
+        mini_order.sort_values(by='priority', ascending=False, inplace=True)
+        mini_order.reset_index(drop=True, inplace=True)
+        mini_orders_all.append(mini_order)
         # min_iter_no = min(mini_orders_all[-1].ITER_NO)
         # max_iter_no = max(mini_orders_all[-1].ITER_NO)
         # if max_iter_no - min_iter_no > 1:
@@ -607,6 +693,7 @@ def prepare_orders():
         #     mini_orders_all[-1] = mini_orders_all[-1][mini_orders_all[-1].ITER_NO == min_iter_no]
         #     write_logs_out(
         #         f'Continuing prev cycle for {int(idx[i])}:{int(idx[i + 1])}: smallest iterated orders len = {len(orders)}')
+    write_logs_out('DEBUG', f'mini_orders sizes {[mo.shape[0] for mo in mini_orders_all]}')
     return mini_orders_all
 
 
@@ -616,18 +703,43 @@ def prepare_orders():
 #         next_pressed, prices = get_price_rows()
 #     return next_pressed, prices
 
+tab_timeout_on = False
+
 
 def check_tab_timeout():
+    global tab_timeout_on
+    tab_timeout_on = False
+    time.sleep(5)
+    tab_timeout_on = True
+    write_logs_out('DEBUG', 'Timeout checker is on')
+
     def check_tab_timeout_helper():
-        while True:
-            if any(time.time() - tab_status.start_t > timeout_tab):
+        while tab_timeout_on:
+            if (not im_fact_updater and any(time.time() - tab_status.start_t > timeout_tab)) or \
+                    (im_fact_updater and any(time.time() - tab_status.iloc[1:].start_t > timeout_tab)):
                 write_logs_out('ERROR', 'Timeout at tab')
-                exit_handler()
-                os._exit(os.EX_OK)
-            time.sleep(30)
+                if im_fact_updater:
+                    timeout_tabs = time.time() - tab_status.iloc[1:].start_t > timeout_tab
+                else:
+                    timeout_tabs = time.time() - tab_status.start_t > timeout_tab
+                for j in list(timeout_tabs.index.values):
+                    timeout_t = timeout_tabs.loc[j].iloc[0]
+                    if timeout_t:
+                        write_logs_out('DEBUG', f'timeout at tab {j}')
+                        change_tab_status(j, action='None', start_t=True)
+                        write_logs_out('DEBUG', tab_status.to_string())
+                # else:
+                #     exit_handler()
+                #     os._exit(os.EX_OK)
+            time.sleep(3)
     th = Thread(target=check_tab_timeout_helper)
     th.start()
 
+
+def stop_tab_timeout():
+    global tab_timeout_on
+    tab_timeout_on = False
+    time.sleep(5)
 
 # if __name__ == '__main__':
 #     create_driver()
@@ -639,37 +751,81 @@ def check_tab_timeout():
 #
 # exit()
 
-# TODO: think about page_is_loaded: consider both cases
+im_fact_updater = False
+indexing_page_fail_cnt = defaultdict(int)
+
+
+def count_index_fails():
+    # ['index_orders', 'open_zakazy', 'index_page1']
+
+    global indexing_page_fail_cnt
+    indexing_page_fail_cnt[tab_status.loc[i, 'action']] += 1
+    # write_logs_out('DEBUG', 'ERROR at indexing')
+    write_logs_out('DEBUG', 'ERROR at indexing: ' + str(indexing_page_fail_cnt))
+    if indexing_page_fail_cnt[tab_status.loc[i, 'action']] > 5:
+        if 'goto' in tab_status.loc[i, 'action']:
+            stuck_page = int(tab_status.loc[i, 'strings'].split(',')[0].split('_')[1])
+        elif 'index_page' in tab_status.loc[i, 'action']:
+            stuck_page = int(tab_status.loc[i, 'action'].split('_')[1].split('e')[1])
+        elif tab_status.loc[i, 'action'] in ('open_zakazy', 'index_orders'):
+            stuck_page = None
+        else:
+            raise Exception(f"Unknown action {tab_status.loc[i, 'action']}")
+
+        if 'index_page' in indexing_page_fail_cnt[tab_status.loc[i, 'action']] and stuck_page != 1:
+            change_tab_status(i, action='index_orders', start_t=True,
+                              strings=f'goto_{stuck_page},' + tab_status.loc[i, 'strings'], status='pending')
+        else:
+            change_tab_status(i, action='index_orders', start_t=True, strings='')
+        indexing_page_fail_cnt = defaultdict(int)
+
+
 if __name__ == '__main__':
     start_time = 0
-    cx_Oracle.init_oracle_client(config_dir=config.wallet_dir,
-                                 lib_dir=config.db_lib_dir)
-    check_tab_timeout()
+    # cx_Oracle.init_oracle_client(config_dir=config.wallet_dir,
+    #                              lib_dir=config.db_lib_dir)
 
     while True:
         init_vars()
         create_driver()
-        db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
+        # db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
+        db = pg.connect(user=config.db_user,
+                        password=config.db_pass,
+                        database=config.db,
+                        host=config.host,
+                        port=config.port)
         login()
         open_new_tabs()
 
         start_time = time.time()
-        init_orders_table()
+        # db_inited = init_orders_table()
+        # if db_inited:
+        #     write_logs_out('DEBUG', 'Tables init success')
+        # else:
+        #     write_logs_out('FATAL', 'Tables init fail')
         mini_orders_all = prepare_orders()
         if not city_inited:
             init_city()
             city_inited = True
         while time.time() - start_time < timeout_restart:
-            print(tab_status[['idx', 'action', 'status']])
+            write_logs_out('DEBUG', str(tab_status[['idx', 'action', 'status']]))
             for i, h in enumerate(driver.window_handles):
                 try:
-                    mini_orders = mini_orders_all[i]
                     driver.switch_to.window(h)
-                    curr_order_link = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ORDER_LINK
-                    curr_order_active = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].ACTIVE
-                    if not curr_order_active:
-                        tab_status.loc[i, 'idx'] += 1
-                        continue
+                    if (tab_status.iloc[0].action in ('index_orders', 'open_zakazy')
+                            or 'index_page' in tab_status.iloc[0].action):
+                        if i != 0:
+                            mini_orders = mini_orders_all[i - 1]
+                            curr_order_link = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].order_link
+                        else:
+                            curr_order_link = 'indexing'
+                    else:
+                        mini_orders = mini_orders_all[i]
+                        curr_order_link = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].order_link
+                    # curr_order_active = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].active
+                    # if not curr_order_active:
+                    #     tab_status.loc[i, 'idx'] += 1
+                    #     continue
                     if tab_status.loc[i, 'action'] == 'None':
                         # start cycle
                         driver.get(curr_order_link)
@@ -754,17 +910,22 @@ if __name__ == '__main__':
                             if im_seller:
                                 my_rank = [i for i, k in enumerate(prices) if my_id in k][0]
                                 my_curr_price = prices[my_link][1]
-                                min_price = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].MIN_PRICE
+                                min_price = mini_orders.iloc[tab_status.loc[i, 'idx'] % mini_orders.shape[0]].min_price
 
                                 cursor = db.cursor()
-                                cursor.execute(f"""merge into current_price_status_{customer_id} tgt 
-                                                using (select :1 order_link, :2 curr_rank, :3 curr_price, :4 min_price from dual) src 
-                                                on (src.order_link = tgt.order_link) 
-                                                when matched then 
-                                                update set tgt.curr_rank = src.curr_rank, tgt.curr_price = src.curr_price, tgt.min_price = src.min_price 
-                                                when not matched then 
-                                                insert (order_link, curr_rank, curr_price, min_price) 
-                                                values (src.order_link, src.curr_rank, src.curr_price, src.min_price)""",
+                                # cursor.execute(f"""merge into current_price_status_{customer_id} tgt
+                                #                 using (select :1 order_link, :2 curr_rank, :3 curr_price, :4 min_price from dual) src
+                                #                 on (src.order_link = tgt.order_link)
+                                #                 when matched then
+                                #                 update set tgt.curr_rank = src.curr_rank, tgt.curr_price = src.curr_price, tgt.min_price = src.min_price
+                                #                 when not matched then
+                                #                 insert (order_link, curr_rank, curr_price, min_price)
+                                #                 values (src.order_link, src.curr_rank, src.curr_price, src.min_price)""",
+                                #                (curr_order_link, my_rank + 1, my_curr_price, int(min_price)))
+                                cursor.execute(f"""insert into _{customer_id}_current_price_status 
+                                                    (order_link, curr_rank, curr_price, min_price) values 
+                                                    (%s, %s, %s, %s) on conflict (order_link) do update set 
+                                    (curr_rank, curr_price, min_price) = (EXCLUDED.curr_rank, EXCLUDED.curr_price, EXCLUDED.min_price)""",
                                                (curr_order_link, my_rank + 1, my_curr_price, int(min_price)))
                                 db.commit()
                                 cursor.close()
@@ -778,7 +939,7 @@ if __name__ == '__main__':
                                     desired_price = top2_price - price_step
                                 desired_price = max(min_price, desired_price)
                                 write_logs_out('DEBUG',
-                                               f'Curr rank {my_rank}\n'
+                                               f'Curr rank {my_rank + 1}\n'
                                                f'Curr price {my_curr_price}\n'
                                                f'Min price {min_price}\n'
                                                f'Desired price {desired_price}\n'
@@ -849,9 +1010,9 @@ if __name__ == '__main__':
                                         break
                                 press_enter()
                                 cursor = db.cursor()
-                                cursor.execute(f"""UPDATE CURRENT_PRICE_STATUS_{customer_id} 
-                                               SET NEXT_PRICE = :1, updated_at = systimestamp
-                                               WHERE ORDER_LINK = :2""", (int(new_price), curr_order_link))
+                                cursor.execute(f"""UPDATE _{customer_id}_CURRENT_PRICE_STATUS 
+                                               SET NEXT_PRICE = %s, updated_at = now()
+                                               WHERE ORDER_LINK = %s""", (int(new_price), curr_order_link))
                                 write_logs_out('DEBUG', f'Updating price to {new_price}')
                                 db.commit()
                                 cursor.close()
@@ -872,14 +1033,205 @@ if __name__ == '__main__':
                                     write_logs_out('ERROR', 'Fail to click curtain but page is stale')
                                     write_logs_out('ERROR', traceback.format_exc())
                                     raise TimeoutException()
+                    elif tab_status.loc[i, 'action'] == 'index_orders':
+                        driver.get("https://kaspi.kz/merchantcabinet/#/offers")
+                        time.sleep(1)
+                        driver.refresh()
+                        if tab_status.loc[i, 'strings'] != '':
+                            if 'goto' in tab_status.loc[i, 'strings'].split(',')[0]:
+                                goto_page = tab_status.loc[i, 'strings'].split(',')[0]
+                                write_logs_out('DEBUG', f'Opening offers page with goto {goto_page}')
+                            else:
+                                raise Exception(f"No goto in strings, but strings is not empty: {tab_status.loc[i, 'strings']}")
+                        else:
+                            change_tab_status(i, action='open_zakazy', status='pending', start_t=True)
+                    elif tab_status.loc[i, 'action'] == 'open_zakazy':
+                        loaded = wait_till_load_by_text('Заказы')
+                        write_logs_out('DEBUG', f'PAGE LOAD {loaded}')
+
+                        if loaded:
+                            change_tab_status(i, status='success')
+                            write_logs_out('DEBUG', 'Opened zakazy')
+                        else:
+                            count_index_fails()
+                            continue
+
+                        if tab_status.loc[i, 'status'] == 'success':
+                            # success2 = wait_till_load_by_text('Заказы')
+                            # write_logs_out('DEBUG', f'Tried zakazy {success2}')
+                            try:
+                                element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located(
+                                    (By.XPATH, f"//a[@class='main-nav__el-link'][@href='#/offers']")))
+                                write_logs_out('DEBUG', f'Found tovary button')
+                                actions = ActionChains(driver)
+                                actions.move_to_element(element)
+                                actions.perform()
+                                element = WebDriverWait(driver, 5).until(EC.visibility_of_element_located(
+                                    (By.XPATH, f"//a[@class='main-nav__sub-el-link'][@href='#/offers']")))
+                                write_logs_out('DEBUG', f'Found button upravlenie tovarami')
+                                element.click()
+                                # TODO: consider goto
+                                if tab_status.loc[i, 'strings'] == '':
+                                    change_tab_status(i, action='index_page1', status='pending', start_t=True)
+                                else:
+                                    goto_page = int(tab_status.loc[i, 'strings'].split(',')[0].split('_')[1])
+                                    change_tab_status(i, action='goto_2', status='pending', start_t=True)
+                            except:
+                                count_index_fails()
+                                continue
+                            # time.sleep(10)
+                    elif 'index_page' in tab_status.loc[i, 'action']:
+                        curr_page = int(tab_status.loc[i, 'action'].split('_')[1].split('e')[1])
+                        if tab_status.loc[i, 'status'] == 'pending':
+                            success1 = True
+                            if curr_page == 1:
+                                success1 = wait_till_load_by_text('Управление товарами')
+                                write_logs_out('DEBUG', f'Search Управление товарами {success1}')
+                            if success1:
+                                try:
+                                    page_loaded = wait_till_load_by_text(' из ', t=0.2)
+                                    write_logs_out('DEBUG', f'iz is loaded {page_loaded}')
+                                    if page_loaded:
+                                        change_tab_status(i, status='success')
+                                    else:
+                                        count_index_fails()
+                                        continue
+                                except:
+                                    count_index_fails()
+                                    continue
+                            else:
+                                count_index_fails()
+                                continue
+                                # change_tab_status(i, action='index_orders', status='pending', start_t=True)
+                        if tab_status.loc[i, 'status'] == 'success':
+                            if curr_page == 1:
+                                try:
+                                    # button = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'gwt-Button button')))
+                                    curtain = WebDriverWait(driver, 5).until(
+                                        EC.visibility_of_element_located((By.CLASS_NAME, 'ks-gwt-dialog _small g-ta-c')))
+                                    button = WebDriverWait(driver, 5).until(
+                                        EC.element_to_be_clickable((By.CLASS_NAME, 'gwt-Button button')))
+                                    button.click()
+                                    write_logs_out('DEBUG', 'Clicked SERVICE_NEDOSTUPEN_BUTTON')
+                                except TimeoutException:
+                                    write_logs_out('DEBUG', 'NO SERVICE_NEDOSTUPEN_BUTTON')
+                                links = []
+                            else:
+                                links = tab_status.loc[i, 'strings'].split(',')
+
+                            try:
+                                rows = []
+                                while len(rows) == 0:
+                                    rows = list(select_by_class('offer-managment__product-cell-link'))
+                                    time.sleep(1)
+                                curr_page_links = [el.get_attribute('href')[:-1] for el in rows]
+                                # links = list(set(links))
+                            except:
+                                count_index_fails()
+                                continue
+                            write_logs_out('DEBUG', f'index_orders len links {len(set(links + curr_page_links))} page {curr_page}')
+                            # write_logs_out('DEBUG', json.dumps(links), write_db=False)
+                            # for el in rows:
+                            # print(thread_name, el)
+                            # el.get_attribute('href')
+                            # press_enter()
+
+                            finished = False
+                            page_info = list(select_by_attr('div', 'class', 'gwt-HTML'))[-1].text
+                            if page_info != '':
+                                page_info = page_info.split()
+                                finished = page_info[0].split('-')[1] == page_info[-1]
+                                if finished:
+                                    # print(thread_name, 'after_finished', rows)
+                                    try:
+                                        # print(thread_name, 'after_finished', [r.get_attribute('href') for r in rows])
+                                        [r.get_attribute('href') for r in rows]
+                                    except:
+                                        finished = False
+                                        # print(thread_name, 'after_failure')
+                                    # print(thread_name, '---')
+                            else:
+                                count_index_fails()
+                                continue
+                            if not finished:
+                                if len(set(links + curr_page_links)) / 10 == curr_page:
+                                    links = set(links + curr_page_links)
+                                    write_logs_out('DEBUG', f'links num is divisible by 10 (len {len(links)} / page {curr_page}) -> pressing next')
+                                    try:
+                                        while not list(select_by_attr('img', 'aria-label', 'Next page')):
+                                            time.sleep(0.1)
+                                        next_button = WebDriverWait(driver, 5).until(
+                                            EC.element_to_be_clickable((By.XPATH, f"//img[@aria-label='Next page']")))
+                                        next_button.click()
+                                        change_tab_status(i, action=f'index_page{curr_page + 1}', status='pending', start_t=True,
+                                                          strings=','.join(links))
+                                    except:
+                                        count_index_fails()
+                                        continue
+                                else:
+                                    write_logs_out('DEBUG', f'links num NOT divisible by 10 (len {len(set(links + curr_page_links))} / page {curr_page}) -> try page again')
+                                    count_index_fails()
+                                    continue
+                            else:
+                                links = list(set(links + curr_page_links))
+                                write_logs_out('DEBUG', f'Len of links is {len(links)}')
+                                old_order_fact = psql.read_sql(f'select * from _{customer_id}_order_fact', db)
+                                write_logs_out('DEBUG', f"Len of old links is "
+                                                        f"{len(old_order_fact.iloc[0].order_links.split(','))}")
+                                cursor = db.cursor()
+                                # cursor.execute(f'truncate _{customer_id}_order_fact')
+                                cursor.execute(f'insert into _{customer_id}_order_fact (order_count, order_links) '
+                                               f'values (%s, %s)',
+                                               (len(links), ','.join(links),))
+                                db.commit()
+                                cursor.close()
+                                write_logs_out('DEBUG', 'order fact updated -> exit()')
+                                sys.exit()
+                    elif 'goto' in tab_status.loc[i, 'action']:
+                        curr_goto_page = int(tab_status.loc[i, 'action'].split('_')[1])  # not went yet (starts with 2)
+                        target_goto_page = int(tab_status.loc[i, 'strings'].split(',')[0].split('_')[1])
+
+                        if tab_status.loc[i, 'status'] == 'pending':
+                            success1 = True
+                            if curr_goto_page == 1:
+                                success1 = wait_till_load_by_text('Управление товарами')
+                                write_logs_out('DEBUG', f'Search Управление товарами {success1}')
+                            if success1:
+                                try:
+                                    page_loaded = wait_till_load_by_text(' из ', t=0.2)
+                                    write_logs_out('DEBUG', f'iz is loaded {page_loaded}')
+                                    if page_loaded:
+                                        change_tab_status(i, status='success')
+                                    else:
+                                        count_index_fails()
+                                        continue
+                                except:
+                                    count_index_fails()
+                                    continue
+                            else:
+                                count_index_fails()
+                                continue
                     else:
                         # print(tab_status.loc[i, 'action'])
                         raise NotImplementedError(f"Not implemented action {tab_status.loc[i, 'action']}")
                 except Exception as e:
-                    change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
+                    # if i != 0:
+                    if im_fact_updater and i == 0:
+                        change_tab_status(i, action='index_orders', start_t=True, strings='')
+                        write_logs_out('DEBUG', 'UNKNOWN ERROR AT INDEXING')
+                    else:
+                        change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
                     write_logs_out('FATAL', traceback.format_exc())
-                time.sleep(1)
+                # time.sleep(1)
+
+            if tab_status.iloc[0].action == 'open_zakazy':
+                im_fact_updater = True
+            if not tab_timeout_on:
+                check_tab_timeout()
+        stop_tab_timeout()
         exit_handler()
 
 # selenium.common.exceptions.ElementClickInterceptedException: Message: Element <label class="form__radio-title"> is not clickable at point (511,611) because another element <div class="ks-gwt-dialog _small g-ta-c"> obscures it
 # https://kaspi.kz/shop/p/artel-dolce-21-ex-belyi-2602172/?c=750000000
+
+# https://kaspi.kz/shop/p/ardesto-kastrjulja-ar1922as-stal-2-2-l-105339039,https://kaspi.kz/shop/p/samsung-ar12txhqasinua-belyi-104750094,https://kaspi.kz/shop/p/ardesto-kastrjulja-gemini-salerno-ar1908cs-stal-0-8-l-105363172,https://kaspi.kz/shop/p/ardesto-nozh-gemini-como-ar1906ck-6-sht-stal--105314266

@@ -31,7 +31,7 @@ CREATE TABLE current_price_status_0
 CREATE TABLE logs_0
 (
     created_at timestamp DEFAULT systimestamp,
-    order_link VARCHAR2(500) NOT NULL,
+    order_link VARCHAR2(200) NOT NULL,
     log_level VARCHAR2(50) NOT NULL,
     log_text VARCHAR2(5000) NOT NULL
 );
