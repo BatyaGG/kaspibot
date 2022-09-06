@@ -71,3 +71,8 @@ create table logs (
 	log_status smallint NOT NULL,
 	log_text character varying(5000) NOT NULL
 );
+
+select count(*) from scan_event where created_at between now() - INTERVAL '10 HOUR' and now() and merchant_id = 2;
+
+select avg(ranking) from order_status where merchant_id = 2;
+

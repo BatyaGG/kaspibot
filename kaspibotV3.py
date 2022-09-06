@@ -400,7 +400,6 @@ def write_prices(prices):
                                         ','.join(prices_df.seller_price.astype('str').values)))
     db.commit()
     cursor.close()
-    print(curr_order_link, 'suka')
 
 
 def prepare_orders():
@@ -620,9 +619,9 @@ if __name__ == '__main__':
                             is_alone = len(prices) == 1
                             cursor = db.cursor()
                             cursor.execute(f"""insert into order_status 
-                                                (merchant_id, order_link, ranking, curr_price, min_price, is_alone) values 
-                                                (%s, %s, %s, %s, %s, %s) on conflict (merchant_id, order_link) do update set 
-                                    (ranking, curr_price, min_price, is_alone) = (EXCLUDED.ranking, EXCLUDED.curr_price, EXCLUDED.min_price, EXCLUDED.is_alone)""",
+                                                (merchant_id, order_link, ranking, curr_price, min_price, is_alone, scanned_at) values 
+                                                (%s, %s, %s, %s, %s, %s, now()) on conflict (merchant_id, order_link) do update set 
+                                    (ranking, curr_price, min_price, is_alone, scanned_at) = (EXCLUDED.ranking, EXCLUDED.curr_price, EXCLUDED.min_price, EXCLUDED.is_alone, EXCLUDED.scanned_at)""",
                                            (merchant_id, curr_order_link, my_rank + 1, my_curr_price, int(min_price), is_alone))
                             db.commit()
                             cursor.close()
