@@ -229,10 +229,8 @@ def index_rows(mode, start_at=1):
         finished = False
         while not finished:
             if curr_page >= start_at:
-                rows = []
-                while len(rows) == 0:
-                    rows = list(select_by_class('offer-managment__product-cell-link'))
-                    time.sleep(0.1)
+                WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CLASS_NAME, 'offer-managment__product-cell-link')))
+                rows = list(select_by_class('offer-managment__product-cell-link'))
                 new_links = set([el.get_attribute('href')[:-1] for el in rows])
                 links.update(new_links)
                 write_logs_out('DEBUG', INDEXER_LINKS_AT_PAGE, f'Page: {curr_page} \nLen: {len(new_links)} \nTotLen: {len(fact_links)}'

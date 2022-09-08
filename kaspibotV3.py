@@ -41,7 +41,7 @@ from status_codes import *
 merchant_id = config.merchant_id
 num_tabs = config.num_tabs
 timeout_tab = config.timeout_tab
-timeout_restart = config.timeout_restart
+timeout_restart = config.timeout_end
 price_step = config.price_step
 
 kaspi_login = None
@@ -452,6 +452,7 @@ def check_tab_timeout():
     write_logs_out('DEBUG', TIMEOUT_CHECKER_ON, 'Timeout checker is on')
 
     def check_tab_timeout_helper():
+        cnt = 1
         while tab_timeout_on:
             for j in range(num_tabs):
                 idc = tab_status.iloc[j].idx
@@ -463,6 +464,15 @@ def check_tab_timeout():
                     write_logs_out('DEBUG', TIMEOUT_AT_TAB, f"timeout at tab {j} \ntdiff: {int(time.time() - tab_timeout_dict[j]['last_change'])} secs")
                     change_tab_status(j, action='None', start_t=True, idx=tab_status.loc[j]['idx'] + 1)
 
+            if cnt % 60 == 0:
+                crs = db.cursor(cursor_factory=RealDictCursor)
+                crs.execute('select Extract(epoch from (now() - created_at)/60) as minutes_ago '
+                            'from scan_event order by created_at desc limit 1')
+                rec = crs.fetchone()['minutes_ago']
+                if rec > 2:
+                    stop_tab_timeout()
+                    write_logs_out('DEBUG', BOT_KILL_TIMEOUT, f'{time.time() - start_time} seconds after start')
+                    os.kill(os.getpid(), signal.SIGKILL)
             # t_diff = time.time() - tab_status.start_t > timeout_tab
             # if any(t_diff):
             #     write_logs_out('ERROR', TIMEOUT_AT_TAB, f'Timeout at tab {t_diff}')
@@ -476,6 +486,7 @@ def check_tab_timeout():
                 #     exit_handler()
                 #     os._exit(os.EX_OK)
             time.sleep(3)
+            cnt += 1
     th = Thread(target=check_tab_timeout_helper)
     th.start()
 
@@ -750,7 +761,7 @@ if __name__ == '__main__':
         if not tab_timeout_on:
             check_tab_timeout()
     stop_tab_timeout()
-    write_logs_out('DEBUG', INDEXER_SECONDS_AFTER, f'{time.time() - start_time} seconds after start')
+    write_logs_out('DEBUG', BOT_END_SECONDS_AFTER, f'{time.time() - start_time} seconds after start')
     os.kill(os.getpid(), signal.SIGKILL)
 # selenium.common.exceptions.ElementClickInterceptedException: Message: Element <label class="form__radio-title"> is not clickable at point (511,611) because another element <div class="ks-gwt-dialog _small g-ta-c"> obscures it
 # https://kaspi.kz/shop/p/artel-dolce-21-ex-belyi-2602172/?c=750000000

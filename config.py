@@ -13,6 +13,6 @@ port = 5432
 merchant_id = 2
 num_tabs = 10
 timeout_tab = 2 * 60
-timeout_restart = 60 * 60 * 3
+timeout_end = 3 * 60 * 60
 price_step = 2
 headless = True
