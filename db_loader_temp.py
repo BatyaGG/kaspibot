@@ -17,7 +17,7 @@ def correct_link(x):
 
 
 def create_tables_and_load(customer_id, db):
-    filename = 'mura_060922.csv'
+    filename = 'customer0_data2.csv'
     # cx_Oracle.init_oracle_client(config_dir='/Users/batyagg/drivers/Wallet_dwh',
     #                              lib_dir="/Users/batyagg/drivers/instantclient_19_8")
     # db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
@@ -52,6 +52,7 @@ def create_tables_and_load(customer_id, db):
     # cursor.executemany(f"INSERT INTO _{customer_id}_ORDER_TABLE (ORDER_LINK, MIN_PRICE, CLS, ACTIVE)"
     #                    f"VALUES (:1,:2,:3,:4)", rows)
     # print(rows)
+    cursor.execute(f'delete from order_table where merchant_id = {customer_id}')
     cursor.execute(f"INSERT INTO ORDER_TABLE (MERCHANT_ID, ORDER_LINK, MIN_PRICE, ACTIVE, CLS)"
                    f"VALUES " + rows)
 

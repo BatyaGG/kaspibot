@@ -180,15 +180,18 @@ def init_kaspi_vars():
 
 def login():
     global driver
-    while True:
+    try:
+    # while True:
         driver.get("https://kaspi.kz/merchantcabinet/login#/offers")
-        success1 = wait_till_load_by_text('Вход для магазинов')
-        while not success1:
-            driver.close()
-            # driver = webdriver.Firefox(firefox_profile=fp)
-            create_driver()
-            driver.get("https://kaspi.kz/merchantcabinet/login#/offers")
-            success1 = wait_till_load_by_text('Вход для магазинов')
+        success1 = wait_till_load_by_text('Вход для магазинов', t=15)
+        if not success1:
+            return False
+        # while not success1:
+        #     driver.close()
+        #     # driver = webdriver.Firefox(firefox_profile=fp)
+        #     create_driver()
+        #     driver.get("https://kaspi.kz/merchantcabinet/login#/offers", t=15)
+        #     success1 = wait_till_load_by_text('Вход для магазинов')
 
         # fill_by_name('username', 'bitcom-90@mail.ru')
         # fill_by_name('username', 'Kuanishbekkyzy@mail.ru')
@@ -198,12 +201,20 @@ def login():
         fill_by_name('password', kaspi_password)
         press_enter()
         success2 = wait_till_load_by_text('Заказы', t=15)
-        if success2:
-            break
-        else:
-            driver.close()
-            # driver = webdriver.Firefox(firefox_profile=fp)
-            create_driver()
+        return success2
+        # else:
+        #     driver.close()
+        #     # driver = webdriver.Firefox(firefox_profile=fp)
+        #     create_driver()
+    except:
+        return False
+
+
+def get_db_fact(mode):
+    cursor = db.cursor(cursor_factory=RealDictCursor)
+    cursor.execute(f'select * from order_{mode} where merchant_id = {merchant_id}')
+    fact_links_db = cursor.fetchall()
+    return fact_links_db
 
 
 def index_rows(mode, start_at=1):
@@ -213,20 +224,27 @@ def index_rows(mode, start_at=1):
         assert type(start_at) is int
         driver.get("https://kaspi.kz/merchantcabinet/#/offers")
         loaded = wait_till_load_by_text('Управление товарами', t=5)
-        write_logs_out('DEBUG', INDEXER_UPRAVLENIE_LOADED, f'upravlenie loaded: {loaded}')
-        if mode == 'archive':
-            select = Select(WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CLASS_NAME, 'form__col._12-12'))))
-            select.select_by_value('ARCHIVE')
         if not loaded:
             write_logs_out('ERROR', INDEXER_UPRAVLENIE_NOTLOADED, 'UPRAVLENIE NOT LOADED')
             raise Exception('UPRAVLENIE TOVARAMI NOT LOADED')
-        loaded = wait_till_load_by_text(' из ', t=15)
-        if not loaded:
-            write_logs_out('ERROR', INDEXER_IZ_NOTLOADED, 'UPRAVLENIE NOT LOADED')
-            raise Exception('UPRAVLENIE TOVARAMI NOT LOADED')
-        write_logs_out('DEBUG', INDEXER_IZ_LOADED, f'iz loaded: {loaded}')
-        curr_page = 1
-        finished = False
+        write_logs_out('DEBUG', INDEXER_UPRAVLENIE_LOADED, f'upravlenie loaded: {loaded}')
+        select = Select(WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CLASS_NAME, 'form__col._12-12'))))
+        if mode == 'archive':
+            select.select_by_value('ARCHIVE')
+        cnt_kaspi = int(select.first_selected_option.text.split(' ')[1][1:-1])
+        fact_links_db = get_db_fact(mode)
+        if cnt_kaspi != len(fact_links_db):
+            loaded = wait_till_load_by_text(' из ', t=15)
+            if not loaded:
+                write_logs_out('ERROR', INDEXER_IZ_NOTLOADED, 'UPRAVLENIE NOT LOADED')
+                raise Exception('UPRAVLENIE TOVARAMI NOT LOADED')
+            write_logs_out('DEBUG', INDEXER_IZ_LOADED, f'iz loaded: {loaded}')
+            curr_page = 1
+            finished = False
+        else:
+            links.update([li['order_link'] for li in fact_links_db])
+            write_logs_out('DEBUG', INDEXER_FACT_NOTCHANGED, f'{mode} len is same {cnt_kaspi}')
+            finished = True
         while not finished:
             if curr_page >= start_at:
                 WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CLASS_NAME, 'offer-managment__product-cell-link')))
@@ -281,7 +299,7 @@ def index_rows(mode, start_at=1):
                 wait_till_load_by_text(' из ')
                 curr_page += 1
                 write_logs_out('DEBUG', INDEXER_NEXTPAGE_LOADED, f'new page {curr_page}')
-        write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'totlen: {len(fact_links)} \ntotpages: {curr_page}')
+        write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'totlen: {len(fact_links)}')
         return 0
     except:
         write_logs_out('FATAL', INDEXER_FATAL_ERROR, f'{traceback.format_exc()}')
@@ -330,7 +348,6 @@ if __name__ == '__main__':
                     host=config.host,
                     port=config.port)
     init_vars()
-    init_kaspi_vars()
     write_logs_out('INFO', INDEXER_STARTED, 'Indexer start')
     fact_links = set()
     archive_links = set()
@@ -338,9 +355,13 @@ if __name__ == '__main__':
     for i, links in enumerate([fact_links, archive_links]):
         mode = 'fact' if i == 0 else 'archive'
         while True:
+            init_kaspi_vars()
             create_driver()
             write_logs_out('INFO', INDEXER_DRIVER_OPENED, 'open')
-            login()
+            status = login()
+            if not status:
+                driver.quit()
+                continue
             if not kaspi_info_inited:
                 try:
                     write_seller_info()
@@ -349,7 +370,8 @@ if __name__ == '__main__':
                     write_logs_out('ERROR', INDEXER_SELLER_INFO_ERROR, f'{traceback.format_exc()}')
                     driver.quit()
                     continue
-            status = index_rows(mode, start_at=len(links) % 10 + 1)
+            # status = index_rows(mode, start_at=len(links) % 10 + 1)
+            status = index_rows(mode)
             # status = index_rows(5)
             driver.quit()
             write_logs_out('INFO', INDEXER_DRIVER_CLOSED, 'close')
