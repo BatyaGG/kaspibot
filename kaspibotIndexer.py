@@ -74,7 +74,7 @@ def init_vars():
     city_inited = False
 
 
-def wait_till_load_by_text(text, t=5.0):
+def wait_till_load_by_text(text, t=15.0):
     # driver.find_elements_by_xpath(f"//*[contains(text(), '{text}')]")
     trials = 1
     for i in range(trials):
@@ -182,10 +182,13 @@ def login():
     global driver
     try:
     # while True:
-        driver.get("https://kaspi.kz/merchantcabinet/login#/offers")
-        success1 = wait_till_load_by_text('Вход для магазинов', t=15)
+        driver.get("https://kaspi.kz/mc/#/login")
+        el = select_by_attr('span', 'innerText', 'Email')
+        print(el)
+        # success1 = wait_till_load_by_text('Напишите', t=15)
         if not success1:
             return False
+        print('asdasdasd')
         # while not success1:
         #     driver.close()
         #     # driver = webdriver.Firefox(firefox_profile=fp)
@@ -255,7 +258,8 @@ def index_rows(mode, start_at=1):
                                                                f'\ntotlens {len(fact_links)} and {len(archive_links)}')
                 page_info = list(select_by_attr('div', 'class', 'gwt-HTML'))[-1].text
                 if page_info != '':
-                    page_info = page_info.split()
+                    page_info = page_info.split('из')
+                    page_info = [page_info[0].replace(' ', ''), page_info[1].replace(' ', '')]
                     finished = page_info[0].split('-')[1] == page_info[-1]
                     write_logs_out('DEBUG', INDEXER_FINISHED_TRYES, f'check finished first: {finished}')
                     if finished:
@@ -299,6 +303,7 @@ def index_rows(mode, start_at=1):
                 wait_till_load_by_text(' из ')
                 curr_page += 1
                 write_logs_out('DEBUG', INDEXER_NEXTPAGE_LOADED, f'new page {curr_page}')
+
         write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'totlen: {len(fact_links)}')
         return 0
     except:
@@ -359,24 +364,24 @@ if __name__ == '__main__':
             create_driver()
             write_logs_out('INFO', INDEXER_DRIVER_OPENED, 'open')
             status = login()
-            if not status:
-                driver.quit()
-                continue
-            if not kaspi_info_inited:
-                try:
-                    write_seller_info()
-                    kaspi_info_inited = True
-                except:
-                    write_logs_out('ERROR', INDEXER_SELLER_INFO_ERROR, f'{traceback.format_exc()}')
-                    driver.quit()
-                    continue
-            # status = index_rows(mode, start_at=len(links) % 10 + 1)
-            status = index_rows(mode)
-            # status = index_rows(5)
-            driver.quit()
-            write_logs_out('INFO', INDEXER_DRIVER_CLOSED, 'close')
-            if status == 0:
-                write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'{mode}: break at len {len(fact_links)}')
-                write_to_db(mode)
-                break
+            # if not status:
+            #     driver.quit()
+            #     continue
+            # if not kaspi_info_inited:
+            #     try:
+            #         write_seller_info()
+            #         kaspi_info_inited = True
+            #     except:
+            #         write_logs_out('ERROR', INDEXER_SELLER_INFO_ERROR, f'{traceback.format_exc()}')
+            #         driver.quit()
+            #         continue
+            # # status = index_rows(mode, start_at=len(links) % 10 + 1)
+            # status = index_rows(mode)
+            # # status = index_rows(5)
+            # driver.quit()
+            # write_logs_out('INFO', INDEXER_DRIVER_CLOSED, 'close')
+            # if status == 0:
+            #     write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'{mode}: break at len {len(fact_links)}')
+            #     write_to_db(mode)
+            #     break
     exit_handler()

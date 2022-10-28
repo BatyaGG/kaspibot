@@ -10,9 +10,9 @@ db = 'batyagg'
 host = '173.249.37.68'
 port = 5432
 
-merchant_id = 2
+merchant_id = 3
 num_tabs = 10
 timeout_tab = 2 * 60
 timeout_end = 3 * 60 * 60
 price_step = 2
-headless = True
+headless = False

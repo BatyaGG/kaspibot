@@ -561,7 +561,6 @@ if __name__ == '__main__':
                                 raise Exception('Next pressed, but prices is None')  # Never occurred
                         else:
                             if prices:
-                                print('asdasdasd')
                                 write_prices(prices)
 
                                 # change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')

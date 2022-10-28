@@ -3,8 +3,8 @@ import config
 import psycopg2 as pg
 import pandas as pd
 
-sys.path.append('Customer_data')
-from Customer_data.Customers import customers
+# sys.path.append('Customer_data')
+# from Customer_data.Customers import customers
 
 pd.set_option('display.width', 1000)
 pd.set_option('display.max_columns', 500)
@@ -17,12 +17,13 @@ def correct_link(x):
 
 
 def create_tables_and_load(customer_id, db):
-    filename = 'customer0_data2.csv'
+    # filename = 'eldos_data.csv'
+    filename = 'anubat_data.csv'
     # cx_Oracle.init_oracle_client(config_dir='/Users/batyagg/drivers/Wallet_dwh',
     #                              lib_dir="/Users/batyagg/drivers/instantclient_19_8")
     # db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
 
-    df = pd.read_csv('Customer_data/' + filename, delimiter=';')
+    df = pd.read_csv('Customer_data/' + filename, delimiter=',')
     # df = pd.read_csv('new_cc.csv', delimiter=';')
     # price_col_name = args.min_price_col_name
     # price_col_name = 'Минимум цена2'
@@ -47,14 +48,17 @@ def create_tables_and_load(customer_id, db):
     #     print(list(x) + [1])
     # rows = ','.join(cursor.mogrify("(%s, %s, %s, %s)", list(x) + [1]) for x in df.values)
     # rows = ','.join([str(tuple(list(x) + [True])) for x in df.values])
-    rows = ','.join([str(tuple([customer_id, x[0], x[1], True, x[2]])) for x in df.values])
-    print(rows)
+    rows = [str(tuple([customer_id, x[0], x[1], True, x[2]])) for x in df.values]
     # cursor.executemany(f"INSERT INTO _{customer_id}_ORDER_TABLE (ORDER_LINK, MIN_PRICE, CLS, ACTIVE)"
     #                    f"VALUES (:1,:2,:3,:4)", rows)
     # print(rows)
+    # print(f"INSERT INTO ORDER_TABLE (MERCHANT_ID, ORDER_LINK, MIN_PRICE, ACTIVE, CLS)"
+    #       f"VALUES " + rows)
     cursor.execute(f'delete from order_table where merchant_id = {customer_id}')
-    cursor.execute(f"INSERT INTO ORDER_TABLE (MERCHANT_ID, ORDER_LINK, MIN_PRICE, ACTIVE, CLS)"
-                   f"VALUES " + rows)
+    for i, j in zip(list(range(0, len(rows), 100)), list(range(100, len(rows) + 200, 100))):
+        print(i, j)
+        cursor.execute(f"INSERT INTO ORDER_TABLE (MERCHANT_ID, ORDER_LINK, MIN_PRICE, ACTIVE, CLS) "
+                       f"VALUES " + ','.join(rows[i:j]))
 
     db.commit()
     cursor.close()
