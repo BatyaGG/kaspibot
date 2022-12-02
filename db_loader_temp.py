@@ -27,11 +27,11 @@ def create_tables_and_load(customer_id, db):
     # df = pd.read_csv('new_cc.csv', delimiter=';')
     # price_col_name = args.min_price_col_name
     # price_col_name = 'Минимум цена2'
-    df = df[['link', 'price', 'cls']]
+    df = df[['link', 'price', 'cls', 'active']]
     print(df)
     # df = df[['Ссылка на товар', price_col_name]]
 
-    df['link'] = df['link'].apply(correct_link)
+    # df['link'] = df['link'].apply(correct_link)
     # df['Ссылка на товар'] = df['Ссылка на товар'].apply(correct_link)
     print('len of df before', len(df))
     print(df.loc[df.duplicated(subset=['link'], keep=False)].sort_values(by=['link'])[['link', 'price']])
@@ -48,7 +48,7 @@ def create_tables_and_load(customer_id, db):
     #     print(list(x) + [1])
     # rows = ','.join(cursor.mogrify("(%s, %s, %s, %s)", list(x) + [1]) for x in df.values)
     # rows = ','.join([str(tuple(list(x) + [True])) for x in df.values])
-    rows = [str(tuple([customer_id, x[0], x[1], True, x[2]])) for x in df.values]
+    rows = [str(tuple([customer_id, x[0], x[1], bool(x[3]), x[2]])) for x in df.values]
     # cursor.executemany(f"INSERT INTO _{customer_id}_ORDER_TABLE (ORDER_LINK, MIN_PRICE, CLS, ACTIVE)"
     #                    f"VALUES (:1,:2,:3,:4)", rows)
     # print(rows)

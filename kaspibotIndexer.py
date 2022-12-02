@@ -6,6 +6,7 @@ import traceback
 import warnings
 import sys
 import os
+import argparse
 import json
 from collections import defaultdict
 from threading import Thread
@@ -56,16 +57,18 @@ def create_driver():
     # fp.set_preference("browser.tabs.remote.autostart", False)
     # fp.set_preference("browser.tabs.remote.autostart.1", False)
     # fp.set_preference("browser.tabs.remote.autostart.2", False)
-    caps = DesiredCapabilities().FIREFOX
-    caps["pageLoadStrategy"] = 'none'
+    # caps = DesiredCapabilities().FIREFOX
+    # caps["pageLoadStrategy"] = 'none'
     options = Options()
     options.headless = config.headless
-    options.page_load_strategy = 'none'
-    driver = webdriver.Firefox(options=options,
-                               # firefox_profile=fp,
-                               capabilities=caps,
-                               # executable_path='/main/drivers/geckodriver'
-                               )
+    # options.page_load_strategy = 'none'
+    # driver = webdriver.Firefox(options=options,
+    #                            # firefox_profile=fp,
+    #                            capabilities=caps,
+    #                            # executable_path='/main/drivers/geckodriver'
+    #                            )
+    driver = webdriver.Firefox(options=options)
+
 
 def init_vars():
     global driver, elem, city_inited
@@ -79,7 +82,23 @@ def wait_till_load_by_text(text, t=15.0):
     trials = 1
     for i in range(trials):
         try:
-            myElem = WebDriverWait(driver, t).until(EC.text_to_be_present_in_element((By.CLASS_NAME, 'layout'), text))
+            myElem = WebDriverWait(driver, t).until(EC.text_to_be_present_in_element((By.CLASS_NAME, 'body'), text))
+            return True
+        except TimeoutException:
+            driver.back()
+            # time.sleep(1)
+            driver.forward()
+            # driver.refresh()
+    # exit_handler()
+    return False
+
+
+def wait_till_load_button(text, t=15.0):
+    # driver.find_elements_by_xpath(f"//*[contains(text(), '{text}')]")
+    trials = 1
+    for i in range(trials):
+        try:
+            myElem = WebDriverWait(driver, t).until(EC.element_to_be_clickable((By.CLASS_NAME, text)))
             return True
         except TimeoutException:
             driver.back()
@@ -129,7 +148,7 @@ def select_by_class(name):
         yield el
 
 
-def write_logs_out(lvl, status_code, text, write_db=True):
+def write_logs_out(lvl, status_code, text):
     print('_______________________')
     print(lvl)
     print(text)
@@ -181,34 +200,26 @@ def init_kaspi_vars():
 def login():
     global driver
     try:
-    # while True:
         driver.get("https://kaspi.kz/mc/#/login")
-        el = select_by_attr('span', 'innerText', 'Email')
-        print(el)
-        # success1 = wait_till_load_by_text('Напишите', t=15)
-        if not success1:
-            return False
-        print('asdasdasd')
-        # while not success1:
-        #     driver.close()
-        #     # driver = webdriver.Firefox(firefox_profile=fp)
-        #     create_driver()
-        #     driver.get("https://kaspi.kz/merchantcabinet/login#/offers", t=15)
-        #     success1 = wait_till_load_by_text('Вход для магазинов')
+        # success1 = wait_till_load_button('button.is-primary')
+        WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.CLASS_NAME, 'button.is-primary')))
+        time.sleep(1)
+        el = driver.find_element(By.XPATH, "//span[text()='Email']")
+        el.click()
+        time.sleep(1)
 
-        # fill_by_name('username', 'bitcom-90@mail.ru')
-        # fill_by_name('username', 'Kuanishbekkyzy@mail.ru')
-        # fill_by_name('password', 'Nurislam177@')
-
-        fill_by_name('username', kaspi_login)
-        fill_by_name('password', kaspi_password)
-        press_enter()
-        success2 = wait_till_load_by_text('Заказы', t=15)
-        return success2
-        # else:
-        #     driver.close()
-        #     # driver = webdriver.Firefox(firefox_profile=fp)
-        #     create_driver()
+        el = driver.find_elements_by_name('username')[1]
+        el.send_keys(kaspi_login)
+        time.sleep(1)
+        el = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.CLASS_NAME, 'button.is-primary')))
+        el.click()
+        time.sleep(1)
+        el = driver.find_elements_by_class_name('text-field')[2]
+        el.send_keys(kaspi_password)
+        el = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.CLASS_NAME, 'button.is-primary')))
+        el.click()
+        WebDriverWait(driver, 1).until(EC.element_to_be_clickable((By.CLASS_NAME, 'menu__item--text')))
+        return True
     except:
         return False
 
@@ -217,94 +228,66 @@ def get_db_fact(mode):
     cursor = db.cursor(cursor_factory=RealDictCursor)
     cursor.execute(f'select * from order_{mode} where merchant_id = {merchant_id}')
     fact_links_db = cursor.fetchall()
-    return fact_links_db
+    if any([any([row[k] == 'none' for k in row]) for row in fact_links_db]):
+        return fact_links_db, False
+    return fact_links_db, True
 
 
-def index_rows(mode, start_at=1):
-    write_logs_out('DEBUG', INDEXER_MODE, f'{mode}')
-    write_logs_out('DEBUG', INDEXER_START_PAGE, f'start_at = {start_at}')
+def wait_curtain():
     try:
-        assert type(start_at) is int
-        driver.get("https://kaspi.kz/merchantcabinet/#/offers")
-        loaded = wait_till_load_by_text('Управление товарами', t=5)
-        if not loaded:
-            write_logs_out('ERROR', INDEXER_UPRAVLENIE_NOTLOADED, 'UPRAVLENIE NOT LOADED')
-            raise Exception('UPRAVLENIE TOVARAMI NOT LOADED')
-        write_logs_out('DEBUG', INDEXER_UPRAVLENIE_LOADED, f'upravlenie loaded: {loaded}')
-        select = Select(WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CLASS_NAME, 'form__col._12-12'))))
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CLASS_NAME, 'loading-overlay.is-active.is-full-page')))
+        WebDriverWait(driver, 15).until_not(
+            EC.presence_of_element_located((By.CLASS_NAME, 'loading-overlay.is-active.is-full-page')))
+    except:
+        pass
+
+
+def index_rows(mode):
+    write_logs_out('DEBUG', INDEXER_MODE, f'{mode}')
+    try:
+        driver.switch_to.new_window('TAB')
+        driver.get("https://kaspi.kz/mc/#/products")
+
+        wait_curtain()
+        write_logs_out('DEBUG', INDEXER_PAGE_LOADED, f'Page is loaded')
+        select = Select(WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, "//span[@class='select']//select"))))
         if mode == 'archive':
             select.select_by_value('ARCHIVE')
+            wait_curtain()
         cnt_kaspi = int(select.first_selected_option.text.split(' ')[1][1:-1])
-        fact_links_db = get_db_fact(mode)
-        if cnt_kaspi != len(fact_links_db):
-            loaded = wait_till_load_by_text(' из ', t=15)
-            if not loaded:
-                write_logs_out('ERROR', INDEXER_IZ_NOTLOADED, 'UPRAVLENIE NOT LOADED')
-                raise Exception('UPRAVLENIE TOVARAMI NOT LOADED')
-            write_logs_out('DEBUG', INDEXER_IZ_LOADED, f'iz loaded: {loaded}')
+        fact_links_db, is_good = get_db_fact(mode)
+
+        if cnt_kaspi != len(fact_links_db) or not is_good:
+            write_logs_out('DEBUG', INDEXER_ORDERS_N_CHANGED, f'{mode} prev orders len {len(fact_links_db)}\n new orders len {cnt_kaspi}')
             curr_page = 1
             finished = False
         else:
-            links.update([li['order_link'] for li in fact_links_db])
+            links.update([(li['order_link'], li['image_link'], li['order_name']) for li in fact_links_db])
             write_logs_out('DEBUG', INDEXER_FACT_NOTCHANGED, f'{mode} len is same {cnt_kaspi}')
+            curr_page = 1
             finished = True
         while not finished:
-            if curr_page >= start_at:
-                WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CLASS_NAME, 'offer-managment__product-cell-link')))
-                rows = list(select_by_class('offer-managment__product-cell-link'))
-                new_links = set([el.get_attribute('href')[:-1] for el in rows])
-                links.update(new_links)
-                write_logs_out('DEBUG', INDEXER_LINKS_AT_PAGE, f'Page: {curr_page} \nLen: {len(new_links)} \nTotLen: {len(fact_links)}'
-                                                               f'\ntotlens {len(fact_links)} and {len(archive_links)}')
-                page_info = list(select_by_attr('div', 'class', 'gwt-HTML'))[-1].text
-                if page_info != '':
-                    page_info = page_info.split('из')
-                    page_info = [page_info[0].replace(' ', ''), page_info[1].replace(' ', '')]
-                    finished = page_info[0].split('-')[1] == page_info[-1]
-                    write_logs_out('DEBUG', INDEXER_FINISHED_TRYES, f'check finished first: {finished}')
-                    if finished:
-                        try:
-                            [r.get_attribute('href') for r in rows]
-                        except:
-                            finished = False
-                        write_logs_out('DEBUG', INDEXER_FINISHED_TRYES, f'check finished second: {finished}')
-                else:
-                    write_logs_out('ERROR', INDEXER_PAGEINFO_EMPTY, f'empty at page {curr_page}')
-                if not finished:
-                    # if len(fact_links) % 10 != 0:
-                    #     write_logs_out('ERROR', INDEXER_LT10_ERROR, f'bad cnt fact_links len prev: {len(fact_links)}')
-                    #     fact_links.difference_update(new_links)
-                    #     write_logs_out('ERROR', INDEXER_LT10_ERROR, f'bad cntfact_links len after: {len(fact_links)}')
-                    #     return 1
-                    # except_n = 0
-                    # except_msg = ''
-                    # while except_n < 10:
-                    try:
-                        # while not list(select_by_attr('img', 'aria-label', 'Next page')):
-                        #     time.sleep(0.1)
-                        # select_by_attr('img', 'aria-label', 'Next page')
-                        wait_next('img', 'aria-label', 'Next page')
-                        click_mouse()
-                    except Exception as e:
-                        write_logs_out('ERROR', INDEXER_IZ_NOTLOADED, f'IZ NOT LOADED at page {curr_page}')
-                        raise Exception(e)
-                        # except_n += 1
-                    # if except_n >= 10:
-                    #     raise Exception(except_msg)
-                    write_logs_out('DEBUG', INDEXER_NEXT_PRESSED, f'next pressed at page {curr_page}')
-                    wait_till_load_by_text(' из ')
-                    curr_page += 1
-                    write_logs_out('DEBUG', INDEXER_NEXTPAGE_LOADED, f'new page {curr_page}')
+            rows = driver.find_elements_by_xpath('//tbody')[0].get_attribute('innerHTML')
+            new_links = []
+            for r in rows.split('\n'):
+                img_src = r.find('img src=')
+                if img_src > 0:
+                    order_link = r[r.find('a href='):].split('"')[1][:-1]
+                    img_src = r[img_src:].split('"')[1]
+                    order_name = r[r.find('jpg" alt=')+5:].split('"')[1]
+                    new_links.append((order_link, img_src, order_name))
+            links.update(new_links)
+            write_logs_out('DEBUG', INDEXER_LINKS_AT_PAGE, f'Page: {curr_page} \nLen: {len(new_links)} \nTotLen: {len(fact_links)}'
+                                                           f'\ntotlens {len(fact_links)} and {len(archive_links)}')
+            next_button = driver.find_element_by_xpath("//div[@class='top level']//a[2]")
+            print(next_button.get_attribute('disabled'))
+            if next_button.get_attribute('disabled'):
+                finished = True
             else:
-                while not list(select_by_attr('img', 'aria-label', 'Next page')):
-                    time.sleep(0.1)
-                click_mouse()
-                write_logs_out('DEBUG', INDEXER_SKIP_PAGE, f'skip page {curr_page}')
-                wait_till_load_by_text(' из ')
-                curr_page += 1
-                write_logs_out('DEBUG', INDEXER_NEXTPAGE_LOADED, f'new page {curr_page}')
-
-        write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'totlen: {len(fact_links)}')
+                next_button.click()
+                wait_curtain()
+        write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'totlen: {len(fact_links)} and {len(archive_links)}')
         return 0
     except:
         write_logs_out('FATAL', INDEXER_FATAL_ERROR, f'{traceback.format_exc()}')
@@ -317,29 +300,37 @@ def write_to_db(mode):
     cursor = db.cursor()
     cursor.execute(f"delete from {'order_fact' if mode == 'fact' else 'order_archive'} where merchant_id = {merchant_id}")
     temp_links = fact_links if mode == 'fact' else archive_links
-    rows = ','.join([str((merchant_id, fl, fl in order_links)) for fl in temp_links])
+    rows = ','.join([str((merchant_id, link, link in order_links, img if img else 'none', name if name else 'none')) for link, img, name in temp_links])
     cursor.execute(f"insert into {'order_fact' if mode == 'fact' else 'order_archive'} "
-                   f"(merchant_id, order_link, main_includes) values " + rows)
+                   f"(merchant_id, order_link, main_includes, image_link, order_name) values " + rows)
+
     db.commit()
     cursor.close()
     write_logs_out('DEBUG', INDEXER_ORDERFACT_UPDATED, f'{mode}: inserted {len(temp_links)} new orders')
 
 
 def write_seller_info():
-    driver.get("https://kaspi.kz/merchantcabinet/#/settings")
-    tb = WebDriverWait(driver, 15).until(
-        EC.visibility_of_element_located((By.TAG_NAME, 'table')))
-    tb = tb.find_element_by_tag_name('tbody')
-    els = tb.find_elements_by_tag_name('tr')
-    kaspi_id = int(els[0].get_attribute('innerText').split('\n')[1])
-    kaspi_name = els[1].get_attribute('innerText').split('\n')[1]
-    link_tag = els[2].find_elements_by_tag_name('td')[1]
-    address_tab = link_tag.find_element_by_tag_name('a').get_attribute('href')
+    driver.switch_to.new_window('TAB')
+    driver.get('https://kaspi.kz/mc/#/settings')
+    # settings_xpath = "//body/div[@id='app']/div/section[@class='app-section']/div[@class='columns is-fullheight']/div[@class='column is-3 is-sidebar-menu desktop-sidebar']/div[@class='menu container sidebar']/ul[1]/li[1]"
+    # sett_butt = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, settings_xpath)))
+    # sett_butt.click()
+    info = WebDriverWait(
+        driver, 15).until(EC.presence_of_element_located((By.XPATH, "//body/div[@id='app']/div/section[@class='app-section']/div[@class='columns is-fullheight']/div[@class='column is-main-content']/div[@class='settings']/section/div[@class='b-tabs']/section[@class='tab-content']/div[1]/section[1]/div[1]")))
+    info_it = info.get_attribute('innerText')
+    info_it = info_it.split('\n')
+    kaspi_id = info_it[2]
+    kaspi_name = info_it[4]
+    links = info.find_elements_by_tag_name('a')
+    address_tab = links[0].get_attribute('href')
+    orders_link = links[1].get_attribute('href')
+
     cursor = db.cursor()
     cursor.execute(f'update merchants '
                    f'set kaspi_id = {kaspi_id},'
                    f"kaspi_name = '{kaspi_name}', "
                    f"address_tab = '{address_tab}',"
+                   f"orders_link = '{orders_link}',"
                    f'last_active = now() where merchant_id = {merchant_id}')
     db.commit()
     cursor.close()
@@ -347,11 +338,17 @@ def write_seller_info():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('write_logs',  nargs='?', default='False')
+    args = parser.parse_args()
+    write_db = args.write_logs == 'True'
+
     db = pg.connect(user=config.db_user,
                     password=config.db_pass,
                     database=config.db,
                     host=config.host,
                     port=config.port)
+
     init_vars()
     write_logs_out('INFO', INDEXER_STARTED, 'Indexer start')
     fact_links = set()
@@ -364,24 +361,23 @@ if __name__ == '__main__':
             create_driver()
             write_logs_out('INFO', INDEXER_DRIVER_OPENED, 'open')
             status = login()
-            # if not status:
-            #     driver.quit()
-            #     continue
-            # if not kaspi_info_inited:
-            #     try:
-            #         write_seller_info()
-            #         kaspi_info_inited = True
-            #     except:
-            #         write_logs_out('ERROR', INDEXER_SELLER_INFO_ERROR, f'{traceback.format_exc()}')
-            #         driver.quit()
-            #         continue
-            # # status = index_rows(mode, start_at=len(links) % 10 + 1)
-            # status = index_rows(mode)
-            # # status = index_rows(5)
-            # driver.quit()
-            # write_logs_out('INFO', INDEXER_DRIVER_CLOSED, 'close')
-            # if status == 0:
-            #     write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'{mode}: break at len {len(fact_links)}')
-            #     write_to_db(mode)
-            #     break
+            # wait_curtain()
+            if not status:
+                driver.quit()
+                continue
+            if not kaspi_info_inited:
+                try:
+                    write_seller_info()
+                    kaspi_info_inited = True
+                except:
+                    write_logs_out('ERROR', INDEXER_SELLER_INFO_ERROR, f'{traceback.format_exc()}')
+                    driver.quit()
+                    continue
+            status = index_rows(mode)
+            driver.quit()
+            write_logs_out('INFO', INDEXER_DRIVER_CLOSED, 'close')
+            if status == 0:
+                write_logs_out('DEBUG', INDEXER_ALLSCANNED_SUCCESS, f'{mode}: break at len {len(fact_links), len(archive_links)}')
+                write_to_db(mode)
+                break
     exit_handler()
