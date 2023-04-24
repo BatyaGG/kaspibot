@@ -13,17 +13,20 @@ pd.set_option('display.max_colwidth', None)
 
 
 def correct_link(x):
-    return '/'.join(x.split('/')[:-1])
+    x = x.split('?')[0]
+    if x[-1] == '/':
+        x = x[:-1]
+    return x
 
 
 def create_tables_and_load(customer_id, db):
-    # filename = 'eldos_data.csv'
-    filename = 'anubat_data.csv'
+    filename = 'eldo_csv.csv'
+    # filename = 'anubat_data.csv'
     # cx_Oracle.init_oracle_client(config_dir='/Users/batyagg/drivers/Wallet_dwh',
     #                              lib_dir="/Users/batyagg/drivers/instantclient_19_8")
     # db = cx_Oracle.connect('ADMIN', 'ASD123asdASD123asd', 'dwh_high')
 
-    df = pd.read_csv('Customer_data/' + filename, delimiter=',')
+    df = pd.read_csv('Customer_data/' + filename, delimiter=';')
     # df = pd.read_csv('new_cc.csv', delimiter=';')
     # price_col_name = args.min_price_col_name
     # price_col_name = 'Минимум цена2'
@@ -31,7 +34,7 @@ def create_tables_and_load(customer_id, db):
     print(df)
     # df = df[['Ссылка на товар', price_col_name]]
 
-    # df['link'] = df['link'].apply(correct_link)
+    df['link'] = df['link'].apply(correct_link)
     # df['Ссылка на товар'] = df['Ссылка на товар'].apply(correct_link)
     print('len of df before', len(df))
     print(df.loc[df.duplicated(subset=['link'], keep=False)].sort_values(by=['link'])[['link', 'price']])
@@ -65,9 +68,9 @@ def create_tables_and_load(customer_id, db):
 
 
 if __name__ == '__main__':
-    db = pg.connect(user=config.db_user,
-                    password=config.db_pass,
-                    database=config.db,
-                    host=config.host,
-                    port=config.port)
+    db = pg.connect(user='eldo',
+                    password='123123123',
+                    database='eldo',
+                    host='localhost',
+                    port=5432)
     create_tables_and_load(config.merchant_id, db)

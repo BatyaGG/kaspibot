@@ -247,7 +247,7 @@ def index_rows(mode):
     write_logs_out('DEBUG', INDEXER_MODE, f'{mode}')
     try:
         driver.switch_to.new_window('TAB')
-        driver.get("https://kaspi.kz/mc/#/products")
+        driver.get("https://kaspi.kz/mc/#/products/ACTIVE/1")
 
         wait_curtain()
         write_logs_out('DEBUG', INDEXER_PAGE_LOADED, f'Page is loaded')

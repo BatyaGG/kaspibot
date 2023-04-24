@@ -407,8 +407,12 @@ def get_price_rows():
         write_logs_out('DEBUG', SELLERS_TABLE_ERROR, f'Prices parse fail:\n {traceback.format_exc()}')
         return False, None
 
-    next_button = WebDriverWait(driver, 5).until(
-        EC.visibility_of_element_located((By.XPATH, "//li[contains(text(),'Следующая')]")))
+    try:
+        next_button = WebDriverWait(driver, 1).until(
+            EC.visibility_of_element_located((By.XPATH, "//li[contains(text(),'Следующая')]")))
+    except TimeoutException:
+        return False, prices
+
     if next_button.get_attribute('class') == 'pagination__el _disabled':
         return False, prices
     next_button.click()
@@ -481,7 +485,6 @@ def prepare_orders():
                    f'Orders fact count: {len(orders_fact)}\n'
                    f'Orders included in input: {orders[orders.main_includes==True].shape[0]}\n'
                    f'Orders active: {orders[orders.active==True].shape[0]}')
-
     orders = orders[orders.active==True]
     write_logs_out('INFO', BOT_INFO, f'Active orders shape {orders.shape[0]}')
 
@@ -800,8 +803,8 @@ if __name__ == '__main__':
                         #     print('NEW_PRICE_USE', tab_status.loc[i]['strings'].split('|+|'))
                         # el = WebDriverWait(driver, 10).until(EC.element_to_be_clickable(
                         #         (By.XPATH, '//th[2]//div[1]//span[1]//div[1]//label[1]//input[1]')))
-                        el = driver.find_element(By.XPATH, '//th[2]//div[1]//span[1]//div[1]//label[1]//span[1]')
-                        el.click()
+                        # el = driver.find_element(By.XPATH, '//th[2]//div[1]//span[1]//div[1]//label[1]//span[1]')
+                        # el.click()
                         # radios = select_by_class('form__radio-title')
                         #
                         # for radio in radios:
@@ -809,13 +812,13 @@ if __name__ == '__main__':
                         #         break
                         # click_mouse()
                         el = WebDriverWait(driver, 1).until(EC.element_to_be_clickable(
-                                (By.XPATH, "//div[@class='th-wrap']//input[@type='number']")))
+                                (By.XPATH, "//div[@class='th-wrap']//input[@type='text']")))
                         # fill_by_class('form__col', new_price)
                         el.clear()
                         el.send_keys(new_price)
 
                         el = WebDriverWait(driver, 1).until(EC.element_to_be_clickable(
-                            (By.XPATH, "//button[contains(text(),'Сохранить')]")))
+                            (By.XPATH, "//button[@class='button button is-primary mr-1']")))
                         # fill_by_class('form__col', new_price)
                         el.click()
 
@@ -866,7 +869,7 @@ if __name__ == '__main__':
             except Exception as e:
                 change_tab_status(i, idx=tab_status.loc[i]['idx'] + 1, action='None')
                 write_logs_out('FATAL', BOT_ERROR, traceback.format_exc())
-            # time.sleep(1)
+            time.sleep(1)
             # print(curr_order_link, tab_status.loc[i, 'action'], tab_status.loc[i, 'status'])
             # print()
             pass
